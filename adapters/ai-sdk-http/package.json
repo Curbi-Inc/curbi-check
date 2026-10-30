@@ -1,0 +1,22 @@
+{
+  "name": "@curbi/ai-sdk-http",
+  "version": "0.1.0-preview.1",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in HTTP auditing middleware for completed AI SDK text; not a traffic proxy.",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "src/index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "ai": "7.0.138"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@curbi/connectors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Curbi Policy Check connectors for agent frameworks: Vercel AI SDK middleware and LangChain runnable. Local, deterministic, no network.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/core": "1.2.17",
+    "@livekit/agents": "1.9.4",
+    "ai": "7.0.138"
+  }
+}

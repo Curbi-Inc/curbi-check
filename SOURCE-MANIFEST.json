@@ -1,0 +1,246 @@
+{
+  "base": "75fbf211db49919af01fe9f73ed7531e1757b700",
+  "adapterPatch": "857ec91de868e2bb54cd83265d226f8d5a4ed552",
+  "files": [
+    {
+      "publicPath": "checker/check-api.js",
+      "sourceSha256": "5f428b71197e5968f9f0c5902aa39dedf5c2e89119d0a44ab20c66a931f6bfcc",
+      "publicSha256": "25eaf19b2179cc5ca2634b6a312dfae1b72b2407e6770fc3c5aa6d4cae198d7b",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "checker/receipts.js",
+      "sourceSha256": "a6e51a8836952bd34e2123ee896123c9d13cc6e4f499689a9e7ced71100b6605",
+      "publicSha256": "c3247e1f7874ceb0d2d308120196fbe89a23597bca17bd35c3796a5515447820",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "mcp/mcp-handler.mjs",
+      "sourceSha256": "8d87e4ef4f7db37070e19441047cf2874438110c3bbe82f9bdd87c58206abf7b",
+      "publicSha256": "a1a8fd286d2d6e8a3c4f86ebc74223c954e2c9ffc2ba34ffa2d6d37f60719f66",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/attacks/attacks.test.mjs",
+      "sourceSha256": "715ec1840dddab365b307feaf025b7fc0e1d5a554d048c11571853f66ac48ecf",
+      "publicSha256": "d8ffdd66fb5aafec10d087814468eaf8263ca199f10d47184a960f760a260390",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/behavior/confusables.test.mjs",
+      "sourceSha256": "2dc0b1fcfe5bc27c0cfe0dcb08da10eeb68d14516c450e77b609edc374a22386",
+      "publicSha256": "ee038b9bf646cdf053540a70ce56ebd394e71aa859544e89b17f583207c795b9",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/behavior/fuzz.test.mjs",
+      "sourceSha256": "89ec468d970f12cd657a970010d93790e117eaf759da233eb16335291b4838f8",
+      "publicSha256": "bc34a71eeb6f85aa316191152356a013765cbd69ffab559d86ec98a29138988c",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/behavior/chained.test.mjs",
+      "sourceSha256": "a07e06e1faa1f9b4dbcfcb3eb8e4f976cc1f744eeeb56ae0dc8e21dafbc9bc47",
+      "publicSha256": "7e9d1ab1cf6c2bd85e98db2003fa502696cb1d0a06d67bb36ccb86ffdf5c9d25",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/behavior/amounts.test.mjs",
+      "sourceSha256": "4956c326d232131cb450fd95e16d3e71c727bdec8b6a8bc3f603f926e9b8a238",
+      "publicSha256": "3e42e8ad7f46b471b324d96cbe9436435ca47d608bfed21f0d6c36c27a4d4a7e",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/behavior/overlap.test.mjs",
+      "sourceSha256": "417f874fc52513159a7f9f2892e74e115b866407ea4c0db7c037f80e6f21953a",
+      "publicSha256": "2ca5184315c29c6ee74da9a243f0f88bd887252d60568ce07cd17ed3dcc15adf",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/tools/tools.test.mjs",
+      "sourceSha256": "6125e174152c1861c06bc2ccba2aa0b2b030a29e3b75868a594523cc2550c3fd",
+      "publicSha256": "65415687979920b6a112d20da5291cf6d31044ae837b14e82e71090cd6dd9ebf",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/package.json",
+      "sourceSha256": "d40a77e70e25c3d7efd4eaf39875f2d58dd0c654b4b65982c4fc46923e2e288b",
+      "publicSha256": "8e18a171e340b58f5a908936ee1de45aea0d335432fcbf450b5e76a1ea17b6e3",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/src/ai-sdk.mjs",
+      "sourceSha256": "40b29bd77868b66fb96ef52718412f734dd4ec9cc918eab4ef4a6629b192bb46",
+      "publicSha256": "de51920e2a2a229cdae69f15c3f57cb221d126879cd818f2798cfaeb1d9cdc8b",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/src/langchain.mjs",
+      "sourceSha256": "a3b5308eb1d79d5194722dd4dbeb7fe53cad67f1f0e41fe8f2285c760da21f14",
+      "publicSha256": "213c57481ecf4cccabb77b960750825710b8a93aa37542ef03f11cb673e0f367",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/src/livekit.mjs",
+      "sourceSha256": "f19b56acaf7b9b7b7d265f26f5043e2d35d15c388c398be2a3ac448f0bbdbd9d",
+      "publicSha256": "fa2eaf865089de9d57a238096039addb13207ed1351d14e09c3beaafdfa04aa3",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/test/ai-sdk.test.mjs",
+      "sourceSha256": "8d6da2d1a574a080a533053c7a20a50dba119f83a5ebfdf1c7020c2c158b304d",
+      "publicSha256": "0822ba484b81252ff6f2812d897fbb433f0ba40383b6ba69b3d283e2f3963464",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/test/cto-fallback.test.mjs",
+      "sourceSha256": "4e001cca3004f2b90786a001bc891ffe395c0bd49f8bdea358dcc3e605dc7bbe",
+      "publicSha256": "75a63cad73612dd6ae912900c8cc2e85a9fbc43863199b5f8ae3fae50583665d",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/test/langchain.test.mjs",
+      "sourceSha256": "04e8948f71f4032b8fb836a391db28f45662cb7295abc1a262bb65de7a2070f5",
+      "publicSha256": "82b9dd583ff5b4ce8a1359739bf32d45dbb935e6e1083eb109a5271f8ff0a296",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/test/livekit.test.mjs",
+      "sourceSha256": "b31e08f5ef5042fd6d24047365848a46fdaeab50a109345b0de75a923e999c77",
+      "publicSha256": "54415615253a8bd86f14a8b634ce17f2194cf037d2b124467403c6ba866daf0c",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/connectors/test/policy-snapshot.test.mjs",
+      "sourceSha256": "8324c05c818dbd852a6a29042e6d1d5812e543044124be9fb96ad25d10c374f0",
+      "publicSha256": "6fbb87c4066cf36ceea6f7fdc75c4fcff56b676be3188fbc9cf6d6512237b34a",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/stream-check/BENCH.json",
+      "sourceSha256": "443ba57c64ee66e7d5fb2df12e3ac45c1ca7033dc08a74244ef0955dfde9bc3f",
+      "publicSha256": "443ba57c64ee66e7d5fb2df12e3ac45c1ca7033dc08a74244ef0955dfde9bc3f",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/stream-check/bench.mjs",
+      "sourceSha256": "e409c615188b30a2ce59fcfb45c6685994fb7d5575ca5f8bd7ac997103de90aa",
+      "publicSha256": "714c4cea6e63a67d6671775093f9117c2924927d7ba77df41337184ad46d2263",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/stream-check/src/stream.mjs",
+      "sourceSha256": "9aaa064b94c2cc3bf6ed2f131c35efe38b523eb5633fafab2f05ae6aa0b7ad89",
+      "publicSha256": "007007272d92b967cd8339718ae0d3f0edf4ff5814099b288662b6ace40447c2",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/stream-check/test/cto-v24.test.mjs",
+      "sourceSha256": "74581b4e5b9e0f841039d874172670e616eff0ec244955d98a86a9a76fb4c2b8",
+      "publicSha256": "1bbe2fc8bf99ec15ca833403a94445bbd9e8a657c2a879d7d48c72bcf16f20e0",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/stream-check/test/stream.test.mjs",
+      "sourceSha256": "201b820552b7b076a062f0ca8fef984f92780d5efb47b2f6ce9ef3d9a56fa328",
+      "publicSha256": "7668a60214558f3de6acb85bf597dfea0ef8e2b4ceb02f4420b0225cfba7b000",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/agent-kit/client.mjs",
+      "sourceSha256": "2a00e497d6b95280faa275c046acb204da7d09ef7064763895339d606ed398d6",
+      "publicSha256": "5f60b866b0df15b9ced4b249cbed09a340d9c42bcd2c595aea1ca1b70a47d3e1",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/agent-kit/package.json",
+      "sourceSha256": "78b6c85648b9fda0d77ff32b00514fa47a8be474e5487d282c561e4005ee1752",
+      "publicSha256": "1ec8262faed0834371c6e7a4dc6f4be2897e00f02fd0275edf0cffd211cc94da",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/agent-kit/test/client.test.mjs",
+      "sourceSha256": "3207611d5b8c38df7f9dd01e76f9349f13649a51deb1161782650f7be069d652",
+      "publicSha256": "9bfaa113e0d6e9bc4b9efeb2caefa5b59a22aee5d6b4dfdb8c85d38167276a2a",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/ai-sdk-http/package.json",
+      "sourceSha256": "4e42f166c8e55fac4c4adefbdb53088af6eab8580b4eafb31b9fbda928498f29",
+      "publicSha256": "c3ad817ea03d7973882e1db9239adfa3744ae436928c4724efbb63e6091f6361",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "adapters/ai-sdk-http/src/index.mjs",
+      "sourceSha256": "79a4b3cbbaf360c4700f77e8c2f28385b337480fab0d09c6b581b314458a816d",
+      "publicSha256": "15d437c6507942ebb9c42acbc67072cf58573ffd43bab44787f746dc0d110573",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/src/proof.mjs",
+      "sourceSha256": "6ac079b6dbd2e696c3e78502dc1fac574b30067905c74d1385c827a62db16d8c",
+      "publicSha256": "e980955074f71463689947475604ff0109880c5b73f2eea6a7c9e734cdfaec64",
+      "transform": "MIT header, declared relative-import relocation, package license only; private-path prose replaced with public boundary description (vector payloads unchanged)"
+    },
+    {
+      "publicPath": "proof/SPEC.md",
+      "sourceSha256": "af05e9a46b9119a272814e0595a6fd84aa1f9d4c2f7f5229f1c7a673ff9ad9d5",
+      "publicSha256": "6038071a6a86a4dbd1b2705c2cc3b4af5e4f19f059e7c20225205c762808e0f9",
+      "transform": "MIT header, declared relative-import relocation, package license only; private-path prose replaced with public boundary description (vector payloads unchanged)"
+    },
+    {
+      "publicPath": "proof/LICENSE",
+      "sourceSha256": "7f739e2355c67333c7344b6827de7e314e06c028b9a13c8364edc7621774d58a",
+      "publicSha256": "7f739e2355c67333c7344b6827de7e314e06c028b9a13c8364edc7621774d58a",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/bin/curbi-verify.mjs",
+      "sourceSha256": "1920e45236b9fc73270e8ed87b2cf0f929b68fb1557e99b4c49a3e736167b421",
+      "publicSha256": "d8e2a4139f2e5e376fc2f1fcb612788d386706703faa4039c9ee83e17e2fb3ae",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/test/conformance.test.mjs",
+      "sourceSha256": "619c97aa0d27b81f3d344135ac82441fbbcdb150d73128b910e25eaf4351a1bc",
+      "publicSha256": "ef9f0177ac86284e44ae3eb9b53983e2a0dbf1c373c87f3e3dbe372c50ee2644",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/vectors/bundle.valid.json",
+      "sourceSha256": "a5b828d802d981ceddbf5d77554bb38502badf2b9cc90adb8993723a15a497b8",
+      "publicSha256": "a5b828d802d981ceddbf5d77554bb38502badf2b9cc90adb8993723a15a497b8",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/vectors/keys.test.json",
+      "sourceSha256": "884e436e38a0b0bb5e13ab452fa4daf1b2bb52224d2cf9c059999bfc6255625b",
+      "publicSha256": "884e436e38a0b0bb5e13ab452fa4daf1b2bb52224d2cf9c059999bfc6255625b",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "proof/vectors/cases.json",
+      "sourceSha256": "6c71fafcb07a99259584d1b4ea7d653acc75a10c22c11606a483c755e2feef80",
+      "publicSha256": "c7e5b51dc986d74ad9e45923c8eb1874fdaf0429d97b04899e6872cfd34fe33a",
+      "transform": "MIT header, declared relative-import relocation, package license only; private-path prose replaced with public boundary description (vector payloads unchanged)"
+    },
+    {
+      "publicPath": "schemas/check-api.openapi.json",
+      "sourceSha256": "86cd0500ca4f774f768c3250654d24e810c089c46ca675cc9e004427081a515a",
+      "publicSha256": "86cd0500ca4f774f768c3250654d24e810c089c46ca675cc9e004427081a515a",
+      "transform": "Unmodified public schema from qualified base"
+    },
+    {
+      "publicPath": "schemas/policy.v1.schema.json",
+      "sourceSha256": "4b845b58acd1be933a9367d75d1d6b6e10cdbc69465968a8a6095e4eb0ee266c",
+      "publicSha256": "4b845b58acd1be933a9367d75d1d6b6e10cdbc69465968a8a6095e4eb0ee266c",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "test/fixtures/corpus.v1.json",
+      "sourceSha256": "131dc20c0a0a174d9e5020fb6bb67298f83585794aad94c4a00cd193c2c86b90",
+      "publicSha256": "131dc20c0a0a174d9e5020fb6bb67298f83585794aad94c4a00cd193c2c86b90",
+      "transform": "MIT header, declared relative-import relocation, package license only"
+    }
+  ]
+}

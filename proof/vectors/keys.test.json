@@ -1,0 +1,12 @@
+{
+  "keys": [
+    {
+      "crv": "Ed25519",
+      "x": "8vRq3q30GK2XmE7wfSwbVIGyyfnGU22f-nXbHSvQFnI",
+      "kty": "OKP",
+      "kid": "curbi-test-2026-10",
+      "use": "sig",
+      "curbi_env": "test"
+    }
+  ]
+}

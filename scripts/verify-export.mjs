@@ -1,0 +1,2 @@
+import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';import assert from 'node:assert/strict';
+const manifest=JSON.parse(readFileSync(new URL('../SOURCE-MANIFEST.json',import.meta.url)));for(const f of manifest.files){assert.ok(!f.publicPath.split('/').includes('..'));const bytes=readFileSync(new URL('../'+f.publicPath,import.meta.url));assert.equal(createHash('sha256').update(bytes).digest('hex'),f.publicSha256,f.publicPath);}console.log('Exported bytes match the reviewed manifest. This is identity, not approval or provider proof.');

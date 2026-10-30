@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+[[allowlists]]
+description = "Exact synthetic idempotency identifiers in public signed conformance vectors; not credential values. Base64 decoding remains enabled."
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^(?:field\-dispatch\-1|payments\-1|physical\-access\-1|physical\-access\-1\-unlogged|scheduling\-1)$''']

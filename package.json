@@ -1,0 +1,19 @@
+{
+  "name": "curbi-check",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*/*.test.mjs proof/test/conformance.test.mjs adapters/connectors/test/*.test.mjs adapters/stream-check/test/*.test.mjs adapters/agent-kit/test/*.test.mjs"
+  },
+  "dependencies": {
+    "ai": "7.0.138",
+    "@langchain/core": "1.2.17",
+    "@livekit/agents": "1.9.4",
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

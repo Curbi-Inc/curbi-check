@@ -1,0 +1,29 @@
+{
+ "measured": "2026-10-27",
+ "node": "v22.22.0",
+ "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+ "policy": "10 prices, 10 forbid rules × 5 phrases, 5 actions",
+ "chunkChars": 6,
+ "results": {
+  "typical voice turn (~350 chars)": {
+   "chunks": 59,
+   "p50_us": 297.8,
+   "p99_us": 1026.2,
+   "max_us": 3233.9
+  },
+  "long reply (~2,000 chars)": {
+   "chunks": 334,
+   "p50_us": 527.3,
+   "p99_us": 1524,
+   "max_us": 4850.5
+  },
+  "max reply (4,000 chars)": {
+   "chunks": 665,
+   "p50_us": 798.1,
+   "p99_us": 2329.6,
+   "max_us": 5630.4
+  }
+ },
+ "note": "Per-push processing time on one machine. Each push re-checks the unreleased text, so cost grows with reply length. Not an end-to-end voice latency claim."
+}
+

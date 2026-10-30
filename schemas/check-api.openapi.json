@@ -1,0 +1,564 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Curbi Check API",
+    "version": "2026-11-01",
+    "summary": "Check AI replies against a business policy and against the record of what the system did.",
+    "description": "Preview. Stateless: nothing is stored, no model calls. Deterministic: the same request yields the same findings and spans in the API and in the browser checker. Rule-based: a pass means no configured rule fired, not that a reply is true or safe. Caller-supplied records are unverified; only Curbi-signed receipts verified by the API count as proof, and proof covers operation and subject only."
+  },
+  "servers": [
+    {
+      "url": "https://curbi.io"
+    }
+  ],
+  "paths": {
+    "/api/v1/check": {
+      "get": {
+        "summary": "API info and limits",
+        "responses": {
+          "200": {
+            "description": "Info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Check one reply or a batch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CheckResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BatchResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/.well-known/curbi-receipt-keys.json": {
+      "get": {
+        "summary": "Public receipt verification keys (JWKS)",
+        "responses": {
+          "200": {
+            "description": "Keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeySet"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Policy": {
+        "$ref": "https://curbi.io/developers/policy.v1.schema.json"
+      },
+      "Version": {
+        "enum": [
+          "2026-10-27",
+          "2026-11-01"
+        ],
+        "description": "Optional. Unknown versions are rejected with 400."
+      },
+      "Verify": {
+        "enum": [
+          "optional",
+          "required"
+        ],
+        "description": "required: action claims need a valid Curbi-signed receipt."
+      },
+      "Record": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Conversation/run the receipts belong to. Supplied by the caller; not caller authentication."
+          },
+          "effects": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Caller-asserted effects. Only status DONE counts. Unverified."
+          },
+          "facts": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "near",
+                "kind",
+                "value"
+              ],
+              "properties": {
+                "near": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "kind": {
+                  "enum": [
+                    "time",
+                    "money",
+                    "date"
+                  ]
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "curbi1.<payload>.<signature>. Verified by the API only; at most 100 are considered."
+          }
+        }
+      },
+      "Reply": {
+        "type": "string",
+        "maxLength": 4000
+      },
+      "CheckRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "policy",
+              "reply"
+            ],
+            "properties": {
+              "version": {
+                "$ref": "#/components/schemas/Version"
+              },
+              "policy": {
+                "$ref": "#/components/schemas/Policy"
+              },
+              "reply": {
+                "$ref": "#/components/schemas/Reply"
+              },
+              "record": {
+                "$ref": "#/components/schemas/Record"
+              },
+              "verify": {
+                "$ref": "#/components/schemas/Verify"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "policy",
+              "cases"
+            ],
+            "properties": {
+              "version": {
+                "$ref": "#/components/schemas/Version"
+              },
+              "policy": {
+                "$ref": "#/components/schemas/Policy"
+              },
+              "verify": {
+                "$ref": "#/components/schemas/Verify"
+              },
+              "cases": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "reply"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reply": {
+                      "$ref": "#/components/schemas/Reply"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/Record"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Finding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule",
+          "span",
+          "text",
+          "why"
+        ],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "pattern": "^(empty|price:(mismatch|unattributed|malformed)|forbid:[a-z0-9-]{1,40}|action:(unrecorded|unverified)|fact:contradicts-record|fact:contradicts-receipt)$"
+          },
+          "span": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "UTF-16 offsets into the original reply, [start, end)."
+          },
+          "text": {
+            "type": "string",
+            "description": "reply.slice(span[0], span[1]). Display as text, never as markup."
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      },
+      "Trust": {
+        "enum": [
+          "curbi_signed",
+          "mixed",
+          "caller_supplied_unverified"
+        ]
+      },
+      "Proof": {
+        "type": "object",
+        "required": [
+          "scope",
+          "factsAuthenticated",
+          "replayProtection",
+          "authorizationGranted"
+        ],
+        "properties": {
+          "scope": {
+            "const": "operation_and_subject_only"
+          },
+          "factsAuthenticated": {
+            "const": false
+          },
+          "replayProtection": {
+            "const": "within_request_only"
+          },
+          "authorizationGranted": {
+            "const": false
+          }
+        }
+      },
+      "Receipts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "valid",
+          "rejected"
+        ],
+        "properties": {
+          "valid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "index",
+                "reason"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reason": {
+                  "enum": [
+                    "malformed",
+                    "unknown_key",
+                    "bad_signature",
+                    "expired_or_not_yet_valid",
+                    "wrong_subject",
+                    "duplicate",
+                    "over_limit",
+                    "not_verified_here",
+                    "key_not_valid_at_issue"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "CaseResult": {
+        "type": "object",
+        "required": [
+          "recordTrust",
+          "pass",
+          "findings",
+          "proof"
+        ],
+        "properties": {
+          "recordTrust": {
+            "$ref": "#/components/schemas/Trust"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "receipts": {
+            "$ref": "#/components/schemas/Receipts"
+          }
+        }
+      },
+      "CheckResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CaseResult"
+          },
+          {
+            "type": "object",
+            "required": [
+              "object",
+              "version"
+            ],
+            "properties": {
+              "object": {
+                "const": "check"
+              },
+              "version": {
+                "const": "2026-11-01"
+              }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "BatchResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "object",
+          "version",
+          "recordTrust",
+          "pass",
+          "results"
+        ],
+        "properties": {
+          "object": {
+            "const": "check.batch"
+          },
+          "version": {
+            "const": "2026-11-01"
+          },
+          "recordTrust": {
+            "$ref": "#/components/schemas/Trust"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CaseResult"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "unevaluatedProperties": false
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "message"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "invalid_request",
+                  "method_not_allowed",
+                  "rate_limited"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "required": [
+          "object",
+          "version",
+          "apiVersion",
+          "supportedVersions",
+          "limits"
+        ],
+        "properties": {
+          "object": {
+            "const": "check.info"
+          },
+          "apiVersion": {
+            "const": "2026-11-01"
+          }
+        }
+      },
+      "KeySet": {
+        "type": "object",
+        "required": [
+          "keys"
+        ],
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kty",
+                "crv",
+                "kid",
+                "x"
+              ],
+              "not": {
+                "required": [
+                  "d"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
