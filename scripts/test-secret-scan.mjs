@@ -1,0 +1,3 @@
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {spawnSync} from 'node:child_process';import assert from 'node:assert/strict';
+const binary=process.argv[2];assert.ok(binary,'Pass the checksum-verified Gitleaks binary path');const dir=mkdtempSync(join(tmpdir(),'curbi-scan-control-'));
+try{writeFileSync(join(dir,'synthetic.txt'),'token='+['ghp','7Jk9Lm2Np4Qr6St8Uv0Wx3Yz5Ab7Cd9Ef1Gh'].join('_'));const r=spawnSync(binary,['dir',dir,'--redact','--no-banner'],{encoding:'utf8'});assert.equal(r.status,1,'Scanner must catch the deliberately synthetic negative control');console.log('Secret scanner negative control detected. No genuine credential used.');}finally{rmSync(dir,{recursive:true,force:true});}
