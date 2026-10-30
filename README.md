@@ -3,6 +3,8 @@
 Check an agent reply against explicit rules. Keep the exact finding as a regression.
 
 ```sh
+git clone https://github.com/Curbi-Inc/curbi-check.git
+cd curbi-check
 npm ci --ignore-scripts
 npm test
 ```
@@ -26,7 +28,7 @@ This is a clean export, with no private Git history. SOURCE-MANIFEST.json record
 
 Only proof verification/specification/public vectors and their conformance suite are included. The private issuer, signing gate, reference log and vector generator are excluded. No hosted ledger, account/site code, production keys or customer failures are included.
 
-Synthetic fixtures are regression cases, not a training corpus. Do not ingest additions into a training or trusted failure corpus without authenticated human approval. Private corpus admission is a separate fail-closed control.
+Synthetic fixtures are regression cases, not a training corpus. Do not ingest additions into a training or trusted failure corpus without authenticated human approval. Private corpus admission is outside this public package.
 
 ## Security checks
 
