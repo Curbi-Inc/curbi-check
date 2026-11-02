@@ -244,7 +244,7 @@
     },
     {
       "publicPath": "packages/PUBLISHING.md",
-      "publicSha256": "3fd558f2671fcb6488a44d3875bb2091a258dcad5fa3322469d90192f61a27ec",
+      "publicSha256": "e5a70250cc008b3df89609071ac87601b13b674befa2b4b23f8214b05424780e",
       "transform": "New MIT framework integration and tests; self-contained registry package"
     },
     {
