@@ -3,7 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       version: {description: 'Reviewed version for both Python packages', required: true, default: '0.1.0'}
-      confirm_publish: {description: 'Publish reviewed curbi-langchain and curbi-llamaindex distributions publicly using configured PyPI trust', type: boolean, required: true, default: false}
+      project: {description: 'Publish one reviewed project (PyPI pending identities bootstrap sequentially)', type: choice, required: true, options: [curbi-langchain, curbi-llamaindex]}
+      confirm_publish: {description: 'Publish the selected reviewed distribution publicly using configured PyPI trust', type: boolean, required: true, default: false}
 permissions: {contents: read}
 concurrency: {group: publish-python, cancel-in-progress: false}
 jobs:
@@ -40,8 +41,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with: {name: reviewed-python-packages, path: release-dist}
       - name: Publish curbi-langchain using PyPI trusted publishing
+        if: ${{ inputs.project == 'curbi-langchain' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
         with: {packages-dir: release-dist/langchain/}
       - name: Publish curbi-llamaindex using PyPI trusted publishing
+        if: ${{ inputs.project == 'curbi-llamaindex' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
         with: {packages-dir: release-dist/llamaindex/}

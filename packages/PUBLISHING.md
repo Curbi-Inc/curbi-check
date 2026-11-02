@@ -12,15 +12,15 @@ Commit and merge the reviewed workflows before configuring publisher trust. GitH
 
 ## npm
 
-1. Human signs in at npmjs.com and creates or verifies ownership of the `curbi` organization. Choose the free public-packages plan; no paid plan is required for these public packages. If the scope is unavailable or belongs to someone else, stop instead of silently changing the package name.
+1. Human signs in at npmjs.com and verifies ownership of the `@curbi` scope. The existing `curbi` account owns this personal scope; no new organization or paid plan is required. If the scope is unavailable or belongs to someone else, stop instead of silently changing the package name.
 2. npm's documented trusted-publisher setup starts in an existing package's settings. For this new package, first publishing/bootstrap must be completed through the account's supported publishing flow; do not invent an existing package or create a permanent token prematurely. The reviewed local tarball and checksum are the release artifact to inspect.
 3. After the first package exists, add the exact GitHub trust tuple above in package Settings → Trusted publishing. Permit `npm publish` for the current direct-publish workflow, or deliberately change the workflow to `npm stage publish` if human staged approval is desired. These are separate permissions. A new trust configuration must successfully publish within two days to bind the repository identity.
 4. npm CLI must be at least 11.5.1 (Node at least 22.14). The workflow uses Node24 and refuses an older CLI. It uses OIDC and provenance, with no `NPM_TOKEN` secret. Keep 2FA enabled; never paste a credential into chat.
 
 ## PyPI
 
-1. Human signs in to pypi.org and opens account Publishing. Add one **pending publisher** for each Python package using the exact tuple above. Pending registration does not reserve the name and no API token is needed.
-2. With both pending publishers and protected GitHub environment ready, dispatch `publish-python.yml` for the reviewed version. The first successful upload creates each project and converts its pending trust to normal trust. A partial publish is possible; inspect each project's version independently and never assume two uploads are transactional.
+1. Human signs in to pypi.org and opens account Publishing. Add the `curbi-langchain` **pending publisher** using the exact tuple above. Pending registration does not reserve the name and no API token is needed. PyPI refuses a second pending project with an identical publishing identity, so bootstrap these projects sequentially.
+2. With the protected `pypi` GitHub environment ready, dispatch `publish-python.yml` selecting `curbi-langchain`, the reviewed version, and explicit confirmation. After successful upload converts its pending publisher into an active publisher, add the `curbi-llamaindex` pending publisher with the same tuple and dispatch again selecting that project. Both wheels are built and tested on each run, but only the selected project is uploaded. Never re-upload an existing version or infer that the other project published.
 3. Verify the published wheels/sdists and registry provenance by downloading into a fresh environment and rerunning framework tests. Publishing a version is distinct from preparing and testing it locally.
 
 ## Evidence and scope
