@@ -2,3 +2,12 @@ node_modules/
 *.log
 .env*
 !.env.example
+
+**/node_modules/
+**/__pycache__/
+**/*.egg-info/
+**/build/
+**/dist/
+.venv/
+release-dist/
+*.tgz

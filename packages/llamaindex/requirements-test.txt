@@ -1,0 +1,6 @@
+build==1.6.1
+setuptools==82.0.0
+wheel==0.48.0
+pytest==9.2.0
+httpx==0.28.1
+llama-index-core==0.14.25

@@ -1,0 +1,17 @@
+{
+  "name": "@curbi/vercel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Deterministic Curbi reply checks for Vercel AI SDK middleware.",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "exports": {".": {"types": "./src/index.d.ts", "import": "./src/index.mjs"}},
+  "files": ["src", "README.md", "LICENSE"],
+  "repository": {"type": "git", "url": "git+https://github.com/Curbi-Inc/curbi-check.git", "directory": "packages/vercel"},
+  "homepage": "https://curbi.io/connect/",
+  "bugs": {"url": "https://github.com/Curbi-Inc/curbi-check/issues"},
+  "publishConfig": {"access": "public"},
+  "scripts": {"test": "node --test test/*.test.mjs", "typecheck": "tsc --noEmit --strict --skipLibCheck --module nodenext --moduleResolution nodenext --target es2022 test/types.ts"},
+  "peerDependencies": {"ai": ">=7.0.0 <8"},
+  "devDependencies": {"ai": "7.0.159", "typescript": "5.9.3", "@types/node": "24.10.0"}
+}
