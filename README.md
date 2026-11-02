@@ -35,3 +35,8 @@ Synthetic fixtures are regression cases, not a training corpus. Do not ingest ad
 Gitleaks 8.30.1 was checksum-verified and run with base64 decoding enabled. The five exact idempotency identifiers inside public synthetic signed vectors are allowlisted as non-credentials; no path-wide exclusion is used. The raw scan initially flagged 33 encoded vector occurrences, all mapped to those public identifiers. New credentials remain detectable. No production/private JWK is distributed.
 
 npm dependency scripts are disabled for installation. Preserve upstream licenses; the dependency tree includes a deprecated fluent-ffmpeg dependency inherited through LiveKit. Pinned dependencies are not a promise of zero vulnerabilities.
+
+
+## Framework packages
+
+New `@curbi/vercel`, `curbi-langchain` and `curbi-llamaindex` distribution candidates live in [`packages/`](packages/PUBLISHING.md). They use real framework interfaces and audit completed text through the Check API. Registry publication and ownership are separate from a passing build; see the publishing handoff for the exact pending setup and release gates. Do not assume an unpublished name can already be installed.

@@ -1,0 +1,47 @@
+name: publish-python
+on:
+  workflow_dispatch:
+    inputs:
+      version: {description: 'Reviewed version for both Python packages', required: true, default: '0.1.0'}
+      confirm_publish: {description: 'Publish reviewed curbi-langchain and curbi-llamaindex distributions publicly using configured PyPI trust', type: boolean, required: true, default: false}
+permissions: {contents: read}
+concurrency: {group: publish-python, cancel-in-progress: false}
+jobs:
+  build:
+    if: ${{ inputs.confirm_publish && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python scripts/check-packages.py --kind python --version "$RELEASE_VERSION"
+        env: {RELEASE_VERSION: '${{ inputs.version }}'}
+      - run: python -m pip install -r packages/langchain/requirements-test.txt -r packages/llamaindex/requirements-test.txt twine==7.0.0
+      - run: |
+          python -m build packages/langchain --outdir release-dist/langchain
+          python -m build packages/llamaindex --outdir release-dist/llamaindex
+          python -m twine check release-dist/*/*
+          python -m pip install --no-deps release-dist/*/*.whl
+          python -m pip check
+      - name: Test exact built wheels before upload
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          python -c "import curbi_langchain,curbi_llamaindex;assert 'site-packages' in curbi_langchain.__file__ and 'site-packages' in curbi_llamaindex.__file__"
+          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" -q
+      - uses: actions/upload-artifact@v4
+        with: {name: reviewed-python-packages, path: 'release-dist/', retention-days: 7}
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions: {contents: read, id-token: write}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: reviewed-python-packages, path: release-dist}
+      - name: Publish curbi-langchain using PyPI trusted publishing
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
+        with: {packages-dir: release-dist/langchain/}
+      - name: Publish curbi-llamaindex using PyPI trusted publishing
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
+        with: {packages-dir: release-dist/llamaindex/}

@@ -1,0 +1,47 @@
+name: framework-packages
+on: [push, pull_request]
+permissions: {contents: read}
+jobs:
+  vercel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python3 scripts/check-packages.py
+      - run: npm ci --prefix packages/vercel --ignore-scripts
+      - run: npm test --prefix packages/vercel
+      - run: npm run typecheck --prefix packages/vercel
+      - name: Pack and install as a clean consumer
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-dist" "$RUNNER_TEMP/consumer"
+          npm pack ./packages/vercel --ignore-scripts --pack-destination "$RUNNER_TEMP/npm-dist"
+          npm install --prefix "$RUNNER_TEMP/consumer" --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/npm-dist/*.tgz
+          cd "$RUNNER_TEMP/consumer"
+          node --input-type=module -e "const p=await import('@curbi/vercel');if(typeof p.curbiMiddleware!=='function'||!import.meta.resolve('@curbi/vercel').includes('node_modules'))throw Error('packed import failed');console.log('packed consumer import passed')"
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {python: ['3.11', '3.12']}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '${{ matrix.python }}'}
+      - name: Install pinned build and framework test dependencies
+        run: python -m pip install -r packages/langchain/requirements-test.txt -r packages/llamaindex/requirements-test.txt twine==7.0.0
+      - name: Build and inspect both distributions
+        run: |
+          python -m build packages/langchain --outdir release-dist/langchain
+          python -m build packages/llamaindex --outdir release-dist/llamaindex
+          python -m twine check release-dist/*/*
+      - name: Test installed wheels, not source imports
+        shell: bash
+        run: |
+          python -m pip install --no-deps release-dist/*/*.whl
+          python -m pip check
+          cd "$RUNNER_TEMP"
+          python -c "import curbi_langchain,curbi_llamaindex;assert 'site-packages' in curbi_langchain.__file__ and 'site-packages' in curbi_llamaindex.__file__"
+          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" -q

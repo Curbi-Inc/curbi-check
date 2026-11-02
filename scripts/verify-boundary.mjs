@@ -2,7 +2,7 @@ import {readdirSync,readFileSync,lstatSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('../',import.meta.url));
-const allowedRoot=new Set(['README.md','LICENSE','package.json','package-lock.json','SOURCE-MANIFEST.json','.gitignore','.gitleaks.toml','.github','scripts','checker','mcp','test','adapters','proof','schemas']);
+const allowedRoot=new Set(['README.md','LICENSE','package.json','package-lock.json','SOURCE-MANIFEST.json','.gitignore','.gitleaks.toml','.github','scripts','checker','mcp','test','adapters','proof','schemas','packages']);
 const forbidden=/(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|["'](?:d|private_key|client_secret)["']\s*:\s*["'][A-Za-z0-9_+\/-]{30,})/;
 let count=0;
 function walk(dir,rel='') {for(const name of readdirSync(dir)) {if(!rel&&['node_modules','.git'].includes(name))continue;

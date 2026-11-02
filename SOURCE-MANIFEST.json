@@ -241,6 +241,131 @@
       "sourceSha256": "131dc20c0a0a174d9e5020fb6bb67298f83585794aad94c4a00cd193c2c86b90",
       "publicSha256": "131dc20c0a0a174d9e5020fb6bb67298f83585794aad94c4a00cd193c2c86b90",
       "transform": "MIT header, declared relative-import relocation, package license only"
+    },
+    {
+      "publicPath": "packages/PUBLISHING.md",
+      "publicSha256": "3fd558f2671fcb6488a44d3875bb2091a258dcad5fa3322469d90192f61a27ec",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/LICENSE",
+      "publicSha256": "7f739e2355c67333c7344b6827de7e314e06c028b9a13c8364edc7621774d58a",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/README.md",
+      "publicSha256": "af6cb28a3cb6d18d75b8e4bf410bd888b353e49135597f3b2727da5bcedc6993",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/pyproject.toml",
+      "publicSha256": "65f3bef6a3a764b51769ef27256e8e8b341a7e165fc1dda52e756317e46b228f",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/requirements-test.txt",
+      "publicSha256": "9778e1406b49976698969150e551d8791866b5d2ee716eae8757813f4a09aa33",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/src/curbi_langchain/__init__.py",
+      "publicSha256": "73c2b7dd0d4b5650ee7322e9d89744c63cb479d392f4e178662bd42c585e2cdb",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/src/curbi_langchain/_check.py",
+      "publicSha256": "269013d747eac524cfd3830f1636639e0e51f21fe6bd55e7dc0b654bbdd4e9c6",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/tests/test_langchain_framework.py",
+      "publicSha256": "295bbcb9ed798ac8bfcfbb1ee7235d49492acc186288962328348e4e711e64d5",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/langchain/tests/test_transport_langchain.py",
+      "publicSha256": "269560cfe1893cda1f4452744338213fc01032a6a66f00456db12a309dfb4f2c",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/LICENSE",
+      "publicSha256": "7f739e2355c67333c7344b6827de7e314e06c028b9a13c8364edc7621774d58a",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/README.md",
+      "publicSha256": "e50705730692c449fb5c0ba091e71880ce5c28d023af73a2bb9348ee4d300f0e",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/pyproject.toml",
+      "publicSha256": "b56c1447bda88a5739083f652a8bf10a6d204b7460cf3fc4f9c1ffd8098e4b1d",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/requirements-test.txt",
+      "publicSha256": "4ca2d2caaa688c7746b4abe8b06f5ca11a441fd0a98f800f89c9966c8bad1fb1",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/src/curbi_llamaindex/__init__.py",
+      "publicSha256": "3fc1af461cfad9d59c2d0b0d938c37046ed514cb7b98c67c91b8129f8be23477",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/src/curbi_llamaindex/_check.py",
+      "publicSha256": "269013d747eac524cfd3830f1636639e0e51f21fe6bd55e7dc0b654bbdd4e9c6",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/tests/test_llamaindex_framework.py",
+      "publicSha256": "d60ea5df0bbe92c942d613c9ef58ba0568aac9a74c09b054e83fe9af38efa095",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/llamaindex/tests/test_transport_llamaindex.py",
+      "publicSha256": "068da789fda431472f236869d1ab4c600fd3405742e6096f85e500284b4214e7",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/LICENSE",
+      "publicSha256": "7f739e2355c67333c7344b6827de7e314e06c028b9a13c8364edc7621774d58a",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/README.md",
+      "publicSha256": "88c28484b3ecbf557dbbdc0d96762c2c3209c4bed7a37fe4915f3d32156b33f1",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/package-lock.json",
+      "publicSha256": "245fa23a857a27296305e5c3e41efa5c821efe071f11e336f3b64223549f4507",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/package.json",
+      "publicSha256": "27921e7844ee662b7821c8107553c24e9d338e3976847c186158384a6b90d091",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/src/index.d.ts",
+      "publicSha256": "f925027eefb3c2b39df2bd9443ee81c417926c3e30c17ae6b7bea8ef4f692b4a",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/src/index.mjs",
+      "publicSha256": "db0a1ff8c9fa02f99943b088b387b492f2c33d2126026a42afe585f9934493c8",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/test/middleware.test.mjs",
+      "publicSha256": "c3440a3a24814400df2c80c85a292b6d9099a396e29e6a273cfd579fd9d0b981",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "packages/vercel/test/types.ts",
+      "publicSha256": "8c7ec66e5ba6fe8fbdb2fa6e321564f1788485712722e321791d6b9712e9e5ee",
+      "transform": "New MIT framework integration and tests; self-contained registry package"
     }
   ]
 }

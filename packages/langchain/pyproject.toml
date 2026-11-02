@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "curbi-langchain"
+version = "0.1.0"
+description = "Fail-closed remote Curbi configured-rule checking for LangChain text runnables"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Curbi, Inc."}]
+dependencies = ["langchain-core>=1.0,<2", "httpx>=0.28,<1"]
+classifiers = ["Programming Language :: Python :: 3", "Operating System :: OS Independent"]
+
+[project.urls]
+Homepage = "https://curbi.io"
+Repository = "https://github.com/Curbi-Inc/curbi-check"
+Documentation = "https://curbi.io/connect/"
+Issues = "https://github.com/Curbi-Inc/curbi-check/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
