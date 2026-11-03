@@ -24,7 +24,7 @@ const CK_AMOUNT = new RegExp(String.raw`(-\s?)?(?:\$|\bUS\$|\bUSD\s?)\s?` + CK_N
 const CK_FOREIGN = new RegExp(String.raw`(?:€|£|¥|\bEUR\s?|\bGBP\s?)\s?` + CK_NUM + String.raw`|\b` + CK_NUM + String.raw`\s?(?:€|£|(?:euros?|EUR|pounds?|GBP)\b)`, 'gi');
 // Action claims, active ("I've booked", "we had sent") and passive ("you're booked", "it's been refunded").
 const CK_ACTED = /\b(?:(?:I|we)(?:'ve|'d|\s+have|\s+had)?|you(?:'re|\s+are|'ve\s+been|\s+have\s+been)|(?:it|this|that|everything)(?:'s\s+been|\s+has\s+been|'s|\s+is|\s+was))\s+(?:just\s+|already\s+|now\s+|all\s+)?([a-z]+)\b/gi;
-// Completion claims the subject+verb pattern above misses (CAIO attack pass, PR #155). Each yields {index, 0, 1: verb}
+// Completion claims the subject+verb pattern above misses (adversarial pass, PR #155). Each yields {index, 0, 1: verb}
 // so the same record/receipt logic applies. Negated, future and question forms do not match by construction.
 const CK_DONE_VERBS = 'processed|issued|completed|sent|finalized|confirmed|applied|made|done';
 function ckMoreActed(text, actions) {
@@ -65,7 +65,7 @@ const CK_CONFUSABLE = { 'а':'a','е':'e','о':'o','р':'p','с':'c','у':'y','�
 // map to ASCII ($٩٩ → $99), lowercase Greek look-alikes fold (gυarantee), letter-spaced words collapse
 // (g-u-a-r-a-n-t-e-e → guarantee) and spelled amounts before a currency word become digits (ninety-nine dollars → 99 dollars).
 const CK_GREEK = { 'α':'a','ε':'e','ι':'i','κ':'k','ν':'v','ο':'o','ρ':'p','τ':'t','υ':'u','χ':'x','ω':'w',
-  // Look-alike sweep (MCO break-session #2: "gµarantee"; µ folds to Greek μ under NFKC). UTS #39 confusables for Latin lowercase.
+  // Look-alike sweep (adversarial review #2: "gµarantee"; µ folds to Greek μ under NFKC). UTS #39 confusables for Latin lowercase.
   'μ':'u','ʋ':'u','ս':'u','ɡ':'g','ց':'g','ɑ':'a','ⱥ':'a','г':'r','ᴦ':'r','ո':'n','п':'n','т':'t','є':'e','ҽ':'e','℮':'e' };
 const CK_DIGIT_ZEROS = [0x660,0x6F0,0x7C0,0x966,0x9E6,0xA66,0xAE6,0xB66,0xBE6,0xC66,0xCE6,0xD66,0xDE6,0xE50,0xED0,0xF20,0x1040,0x1090,0x17E0,0x1810,0x1946,0x19D0,0xA620,0xA8D0,0xA900,0xAA50,0xABF0];
 const ckDigit = ch => { const c = ch.codePointAt(0); for (const z of CK_DIGIT_ZEROS) if (c >= z && c <= z + 9) return String(c - z); return null; };

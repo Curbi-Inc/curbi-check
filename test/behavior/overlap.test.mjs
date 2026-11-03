@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO adversarial pass 2 (2026-10-29): overlapping item names, partial words, aliases and multi-item sentences.
+// Adversarial pass 2 (2026-10-29): overlapping item names, partial words, aliases and multi-item sentences.
 // Every case runs under the policy as written AND with the price list reversed: attribution must not depend on order.
 // Expected: '' = passes; 'mismatch:<Item>' = price:mismatch naming that item; other strings = that price:* rule.
 //   miss       = was wrong (silent pass or wrong finding). Recorded as `todo` first, then fixed and promoted to a guard.

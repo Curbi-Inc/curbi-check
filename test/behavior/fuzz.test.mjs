@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO fuzz pass (2026-10-29): 10 malformed-input classes against validate_policy, export_regression, verify_bundle
+// Fuzz pass (2026-10-29): 10 malformed-input classes against validate_policy, export_regression, verify_bundle
 // and policy_check over MCP. Invariants for every input: no exception escapes the handler, no 5xx, every refusal is
 // typed, nothing malformed verifies or passes, Object.prototype stays clean, and CPU stays bounded at the body limit.
 import test from 'node:test';

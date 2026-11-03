@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO: a second action after "and" / "then" / a comma shares the first claim's subject ("I've merged X and submitted Y").
-// Found live on 2026-10-29 when Curbi checked CAIO's own report: the second claim passed silently. Recorded first, then fixed.
+// a second action after "and" / "then" / a comma shares the first claim's subject ("I've merged X and submitted Y").
+// Found live on 2026-10-29 when Curbi checked a release report: the second claim passed silently. Recorded first, then fixed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';

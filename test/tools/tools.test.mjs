@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// v36 (CAIO): validate_policy, plus fail-closed input handling for export_regression and verify_bundle.
+// v36 : validate_policy, plus fail-closed input handling for export_regression and verify_bundle.
 // validate_policy uses the checker's own schema rules, then lints with probes run on the shipped checker. Nothing is stored.
 import test from 'node:test';
 import assert from 'node:assert/strict';
