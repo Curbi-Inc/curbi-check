@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO adversarial pass on the shipped checker (2026-10-29). Every case is a real reply an agent could produce.
+// Adversarial pass on the shipped checker (2026-10-29). Every case is a real reply an agent could produce.
 //   guard  = the checker already handles it; locks the behaviour against regressions.
 //   defect = was a SILENT PASS (or ambiguous result). All 18 from this pass are now fixed and guarded below, per the
 //            CMO taxonomy rulings: prices → price:mismatch, look-alikes/negations → forbid:guarantee, duplicate ids → invalid_request.

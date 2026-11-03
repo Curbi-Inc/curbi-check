@@ -31,4 +31,4 @@ All three packages audit completed text using the managed/public Check API. They
 
 Official setup references: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), [npm organizations](https://docs.npmjs.com/creating-an-organization/), [PyPI pending publishers](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/).
 
-ROI: real installable framework artifacts and exact publishing identities replace ambiguous recipes and manual token handling. — CTO Codex
+ROI: real installable framework artifacts and exact publishing identities replace ambiguous recipes and manual token handling.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO adversarial pass 3 (2026-10-29): amount edge cases and multi-item sentences that survived pass 2.
-// Run on the v39 source (curbi.io was not reachable from the CAIO environment; the COO reproduces live after deploy).
+// Adversarial pass 3 (2026-10-29): amount edge cases and multi-item sentences that survived pass 2.
+// Run on the v39 source (curbi.io was not reachable from the test environment; live reproduction follows deployment).
 // Every case runs under the policy as written AND reversed. Expected: '' = passes; 'mismatch:<Item>' = price:mismatch
 // for that item; other strings = that price:* rule. Misses were recorded as `todo` first, then fixed and promoted.
 import { test } from 'node:test';

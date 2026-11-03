@@ -5,8 +5,8 @@
     {
       "publicPath": "checker/check-api.js",
       "sourceSha256": "5f428b71197e5968f9f0c5902aa39dedf5c2e89119d0a44ab20c66a931f6bfcc",
-      "publicSha256": "25eaf19b2179cc5ca2634b6a312dfae1b72b2407e6770fc3c5aa6d4cae198d7b",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "cf620a6b505fd57ebd784a23cb660378c817715cbe364ca3717f9a0dd8088ca8",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "checker/receipts.js",
@@ -23,44 +23,44 @@
     {
       "publicPath": "test/attacks/attacks.test.mjs",
       "sourceSha256": "715ec1840dddab365b307feaf025b7fc0e1d5a554d048c11571853f66ac48ecf",
-      "publicSha256": "d8ffdd66fb5aafec10d087814468eaf8263ca199f10d47184a960f760a260390",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "6f932d8473d33e398d9d97ae35fbe05355508c1d28ec34001906db15780fecef",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/behavior/confusables.test.mjs",
       "sourceSha256": "2dc0b1fcfe5bc27c0cfe0dcb08da10eeb68d14516c450e77b609edc374a22386",
-      "publicSha256": "ee038b9bf646cdf053540a70ce56ebd394e71aa859544e89b17f583207c795b9",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "0a3538f8651e54fbdafbf2efc378ea4aba259789546e56c71657c625c448a22f",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/behavior/fuzz.test.mjs",
       "sourceSha256": "89ec468d970f12cd657a970010d93790e117eaf759da233eb16335291b4838f8",
-      "publicSha256": "bc34a71eeb6f85aa316191152356a013765cbd69ffab559d86ec98a29138988c",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "44847d349cc6761eb02d9d5108bc91ef6ed9c2d203f2d8f4a5139758c41d4a61",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/behavior/chained.test.mjs",
       "sourceSha256": "a07e06e1faa1f9b4dbcfcb3eb8e4f976cc1f744eeeb56ae0dc8e21dafbc9bc47",
-      "publicSha256": "7e9d1ab1cf6c2bd85e98db2003fa502696cb1d0a06d67bb36ccb86ffdf5c9d25",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "498dba999f93cfeb03902a58aeb7d27cc33f1d4fc1a7beb289520725836287f7",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/behavior/amounts.test.mjs",
       "sourceSha256": "4956c326d232131cb450fd95e16d3e71c727bdec8b6a8bc3f603f926e9b8a238",
-      "publicSha256": "3e42e8ad7f46b471b324d96cbe9436435ca47d608bfed21f0d6c36c27a4d4a7e",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "d4e16159852b074eeed457771a370a88d84b1ef5b5724e5e19ffd26eb6f215e5",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/behavior/overlap.test.mjs",
       "sourceSha256": "417f874fc52513159a7f9f2892e74e115b866407ea4c0db7c037f80e6f21953a",
-      "publicSha256": "2ca5184315c29c6ee74da9a243f0f88bd887252d60568ce07cd17ed3dcc15adf",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "72b5a9c8b2b534998a14ed38081d08888a64669b9a6afe16e9b5fa83ddf819dd",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "test/tools/tools.test.mjs",
       "sourceSha256": "6125e174152c1861c06bc2ccba2aa0b2b030a29e3b75868a594523cc2550c3fd",
-      "publicSha256": "65415687979920b6a112d20da5291cf6d31044ae837b14e82e71090cd6dd9ebf",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "publicSha256": "91f7e3762de1afbf390cf9c43ad577dfd6f32336ad07d60ecdbcbb89c5da24d8",
+      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
     },
     {
       "publicPath": "adapters/connectors/package.json",
@@ -244,8 +244,8 @@
     },
     {
       "publicPath": "packages/PUBLISHING.md",
-      "publicSha256": "e5a70250cc008b3df89609071ac87601b13b674befa2b4b23f8214b05424780e",
-      "transform": "New MIT framework integration and tests; self-contained registry package"
+      "publicSha256": "b6119ed4fb3904d142801182a05efb2bdca0af2940eedad16ed15999b2ceea50",
+      "transform": "New MIT framework integration and tests; self-contained registry package; first-party attribution comment cleanup"
     },
     {
       "publicPath": "packages/langchain/LICENSE",

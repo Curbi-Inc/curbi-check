@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Curbi, Inc.
-// CAIO: look-alike letters (UTS #39 confusables for Latin lowercase) substituted one at a time into a forbidden phrase.
-// Found from MCO break-session #2: "gµarantee" (micro sign, NFKC -> Greek mu) passed silently. The sweep showed the class:
+// look-alike letters (UTS #39 confusables for Latin lowercase) substituted one at a time into a forbidden phrase.
+// Found from adversarial review #2: "gµarantee" (micro sign, NFKC -> Greek mu) passed silently. The sweep showed the class:
 // 21 misses across 15 characters. Recorded as todo first, then fixed. Every substitution must be caught.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
