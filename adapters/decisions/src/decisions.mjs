@@ -24,23 +24,28 @@ export function canonical(v) {
 }
 export const digest = v => 'sha256:' + createHash('sha256').update(v instanceof Uint8Array ? v : canonical(v)).digest('hex');
 const freeze = v => { if (v && typeof v === 'object') { Object.values(v).forEach(freeze); Object.freeze(v); } return v; };
-// Probabilities arrive as an object {option: p} or, per OpenAI's docs as reported in review, an array of {value, probability}.
-// A Score item can carry a numeric level index as value plus a label (OpenAI's documented Score response); the label
-// names the option, and a bare numeric value indexes the declared options.
-function probs(o, options) {
-  if (isObj(o)) return Object.fromEntries(Object.entries(o).map(([k, v]) => [String(k), v]));
-  if (!Array.isArray(o)) return null;
+// systemone probabilities are an object {option: p}.
+const probs = o => isObj(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [String(k), v])) : null;
+// OpenAI probabilities are an array of {value, probability}, validated at the provider boundary with no label fallback.
+// Choice: value is a declared string or boolean choice. Score: value is an integer level index, unique and in range; a
+// label, when present, must name that declared level.
+function openaiProbs(o, options, type) {
+  if (o === undefined) return null;
+  if (!Array.isArray(o)) throw new Malformed('probabilities: an array of {value, probability}');
   const out = {};
   for (const e of o) {
+    if (!isObj(e)) throw new Malformed('probabilities: entries are objects');
     let k;
-    if (isObj(e) && typeof e.value === 'string') k = e.value;
-    else if (isObj(e) && typeof e.value === 'number') {
-      // A numeric value is a level index: it must be in range and name the declared level its label claims.
-      if (!options || !Number.isInteger(e.value) || e.value < 0 || e.value >= options.length) throw new Malformed('probabilities: level index out of range');
+    if (type === 'score') {
+      if (!Number.isInteger(e.value) || e.value < 0 || e.value >= options.length) throw new Malformed('probabilities: level index out of range');
       if (e.label !== undefined && e.label !== options[e.value]) throw new Malformed('probabilities: label does not match its level index');
       k = options[e.value];
-    } else if (isObj(e) && typeof e.label === 'string') k = e.label;
-    if (typeof k !== 'string' || Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
+    } else {
+      if (typeof e.value !== 'string' && typeof e.value !== 'boolean') throw new Malformed('probabilities: choice value must be a string or boolean');
+      k = String(e.value);
+      if (!options.includes(k)) throw new Malformed('probabilities: value is not a declared choice');
+    }
+    if (Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
     out[k] = e.probability;
   }
   return out;
@@ -64,7 +69,10 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
   if (!isObj(response) || !isObj(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'systemone', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
     request_digest: digest(requestBytes ?? request), response_digest: digest(responseBytes ?? response), received_at: receivedAt ?? null };
-  return Object.keys(request.questions).sort().map(id => {
+  const ids = Object.keys(request.questions).sort();
+  if (Object.keys(response.answers).length !== ids.length || !Object.keys(response.answers).every(k => Object.hasOwn(request.questions, k)))
+    throw new Malformed('answers must match the requested questions exactly');
+  return ids.map(id => {
     const q = request.questions[id], a = response.answers[id];
     if (!isObj(q) || !isObj(a)) throw new Malformed(`question ${id} has no answer`);
     const common = { question_id: id, type: q.type, refused: false };
@@ -95,26 +103,26 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
   if (!isObj(response) || !Array.isArray(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'decisions', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
     request_digest: digest(requestBytes ?? request), response_digest: digest(responseBytes ?? response), received_at: receivedAt ?? null };
-  const byName = new Map();
-  response.answers.forEach((a, i) => { if (!isObj(a)) throw new Malformed('answer ' + i); byName.set(typeof a.name === 'string' ? a.name : String(i), a); });
+  // Answers correspond one to one, in order, with the requested questions: a duplicate, extra, missing or mismatched
+  // answer is malformed, so a later answer can never erase a refusal or a conflicting decision.
+  if (response.answers.length !== request.questions.length) throw new Malformed('answers must match the requested questions one to one');
   return request.questions.map((q, i) => {
     if (!isObj(q)) throw new Malformed('question ' + i);
-    const id = typeof q.name === 'string' ? q.name : String(i), a = byName.get(id);
-    if (!a) throw new Malformed(`question ${id} has no answer`);
+    const a = response.answers[i];
+    if (!isObj(a)) throw new Malformed('answer ' + i);
+    const id = typeof q.name === 'string' ? q.name : String(i);
+    if (typeof q.name === 'string' ? a.name !== q.name : a.name !== undefined) throw new Malformed(`answer ${i} does not match question ${id}`);
     const options = q.type === 'predicate' ? ['true', 'false'] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => String(label(o)));
     if (!Array.isArray(options) || !options.length) throw new Malformed(`question ${id} needs options`);
     const common = { question_id: id, type: q.type };
     if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
     if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
     if (q.type === 'predicate') return record(base, { ...common, refused: false, ...binary(a.probability, a.confidence) });
-    // A score answer may name its level by label or by index into the declared levels.
-    // A score answer names its level by label, by integer index, or (documented) by a fractional position. A fractional
-    // position never selects: the level comes from the probabilities and the position is kept as score_position.
-    const probabilities = probs(a.probabilities, options);
+    // Every OpenAI Score is a numeric mean position, whole numbers included (per CTO re-reviews); it never selects:
+    // the level comes from the probabilities and the position is kept as score_position. Choices may be booleans.
+    const probabilities = openaiProbs(a.probabilities, options, q.type);
     let selected, extra = {};
-    if (q.type === 'choice') selected = a.choice;
-    else if (typeof a.score === 'string') selected = a.score;
-    // Every numeric OpenAI score is a mean position, whole numbers included (per CTO re-review); a label names a level.
+    if (q.type === 'choice') { if (typeof a.choice === 'string' || typeof a.choice === 'boolean') selected = String(a.choice); }
     else if (typeof a.score === 'number' && Number.isFinite(a.score) && isObj(probabilities)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
     return record(base, { ...common, refused: false, options, probabilities, selected, confidence: isProb(a.confidence) ? a.confidence : null, ...extra });

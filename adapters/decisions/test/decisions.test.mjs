@@ -91,7 +91,7 @@ test('systemone score: the integer level is selected; expected_level is kept but
 
 const oaReq = { model: 'gpt-6-luna', input: 'Order arrived broken', questions: [{ type: 'choice', name: 'refund_eligible', instructions: 'Is a refund allowed?', choices: ['eligible', 'ineligible', 'unclear'] }] };
 test('decisions shape: a choice with per-option probabilities acts; without them the margin is unavailable and it hands off', () => {
-  const withP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95, probabilities: { eligible: 0.97, ineligible: 0.02, unclear: 0.01 } }] }, receivedAt: at });
+  const withP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95, probabilities: [{ value: 'eligible', probability: 0.97 }, { value: 'ineligible', probability: 0.02 }, { value: 'unclear', probability: 0.01 }] }] }, receivedAt: at });
   assert.equal(route(policy, 'refund_eligible', withP, { now }).outcome, 'act');
   const noP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95 }] }, receivedAt: at });
   assert.deepEqual(route(policy, 'refund_eligible', noP, { now }).reasons, ['margin_unavailable']);
@@ -173,9 +173,9 @@ test('decisions shape: array probabilities {value, probability} act, and score l
   assert.deepEqual(recs[0].probabilities, { eligible: 0.97, ineligible: 0.02, unclear: 0.01 });
   assert.equal(route(policy, 'refund_eligible', recs, { now }).outcome, 'act');
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'How bad?', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
-  const [s] = normalizeDecisions({ provider: 'openai', request: sreq, response: { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'sev', score: 'severe',
-    probabilities: [{ value: 'none', probability: 0.02 }, { value: 'minor', probability: 0.06 }, { value: 'severe', probability: 0.92 }] }] }, receivedAt: at });
-  assert.deepEqual([s.options, s.selected], [['none', 'minor', 'severe'], 'severe']);
+  const [s] = normalizeDecisions({ provider: 'openai', request: sreq, response: { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'sev', score: 1.9,
+    probabilities: [{ value: 0, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.06 }, { value: 2, label: 'severe', probability: 0.92 }] }] }, receivedAt: at });
+  assert.deepEqual([s.options, s.selected, s.score_position], [['none', 'minor', 'severe'], 'severe', 1.9]);
   assert.throws(() => normalizeDecisions({ provider: 'openai', request: oaReq, response: { answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', probabilities: [{ value: 'eligible', probability: 0.5 }, { value: 'eligible', probability: 0.5 }] }] }, receivedAt: at }), /malformed/, 'duplicate values are not silently merged');
 });
 
@@ -260,4 +260,40 @@ test('OpenAI numeric value plus label: duplicate, out-of-range or swapped indice
   assert.throws(run([{ value: 999, label: 'none', probability: 0.02 }, { value: 999, label: 'minor', probability: 0.03 }, { value: 999, label: 'severe', probability: 0.95 }]), /malformed/, 'out of range');
   assert.throws(run([{ value: 2, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.03 }, { value: 0, label: 'severe', probability: 0.95 }]), /malformed/, 'swapped labels');
   assert.doesNotThrow(run([{ value: 0, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.03 }, { value: 2, label: 'severe', probability: 0.95 }]));
+});
+
+// CTO re-review 6709502686, P1: answers must correspond one to one, in order, with the requested questions. A duplicate,
+// extra, missing or mismatched answer is malformed, so a later answer can never erase a refusal or a conflicting decision.
+const qReq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'q', instructions: 'x', choices: ['allow', 'deny'] }] };
+const allowAnswer = { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: [{ value: 'allow', probability: 0.95 }, { value: 'deny', probability: 0.05 }] };
+const denyAnswer = { type: 'choice', name: 'q', choice: 'deny', confidence: 0.9, probabilities: [{ value: 'allow', probability: 0.05 }, { value: 'deny', probability: 0.95 }] };
+const qPolicy = compileDecisionPolicy({ decisions: { q: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'openai', model: 'gpt-6-luna' }] } } });
+const oaq = answers => normalizeDecisions({ provider: 'openai', request: qReq, response: { model: 'gpt-6-luna', answers }, receivedAt: at });
+test('decisions shape: duplicate, extra, missing or mismatched answers are malformed; a refusal is never erased', () => {
+  assert.equal(route(qPolicy, 'q', oaq([allowAnswer]), { now }).outcome, 'act', 'control');
+  for (const [why, answers] of [['refusal then allow', [{ type: 'refusal', name: 'q' }, allowAnswer]], ['deny then allow', [denyAnswer, allowAnswer]],
+    ['extra answer', [allowAnswer, { ...allowAnswer, name: 'other' }]], ['missing answer', []], ['wrong name', [{ ...allowAnswer, name: 'r' }]]])
+    assert.throws(() => oaq(answers), /malformed/, why);
+  const unnamed = { ...qReq, questions: [{ type: 'choice', instructions: 'x', choices: ['allow', 'deny'] }, { type: 'choice', instructions: 'y', choices: ['allow', 'deny'] }] };
+  const { name: _n, ...anon } = allowAnswer;
+  assert.equal(normalizeDecisions({ provider: 'openai', request: unnamed, response: { answers: [anon, anon] }, receivedAt: at }).length, 2, 'unnamed questions match by position');
+  assert.throws(() => normalizeDecisions({ provider: 'openai', request: unnamed, response: { answers: [anon, allowAnswer] }, receivedAt: at }), /malformed/, 'a named answer for an unnamed question');
+  assert.throws(() => one(sysReq(), { answers: { ...glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }).answers, extra: { choice: 'x', probabilities: {} } } }), /malformed/, 'systemone extra answer');
+});
+
+// CTO re-review, P2: OpenAI's documented wire types are a numeric Score and integer level indices; choice values are
+// strings or booleans. Anything else is malformed, with no label fallback.
+test('decisions shape: malformed OpenAI wire types are refused; valid numeric means, boolean and string choices pass', () => {
+  const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
+  const items = v => [0, 1, 2].map(i => ({ value: v(i), label: ['none', 'minor', 'severe'][i], probability: [0.02, 0.03, 0.95][i] }));
+  const sc = (score, probabilities) => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score, probabilities }] }, receivedAt: at });
+  assert.throws(sc('severe', items(i => i)), /malformed/, 'string score');
+  assert.throws(sc(1.93, items(() => null)), /malformed/, 'null value');
+  assert.throws(sc(1.93, items(() => ({ invalid: true }))), /malformed/, 'object value');
+  assert.doesNotThrow(sc(1.93, items(i => i)), 'valid numeric mean');
+  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [true, false] }] };
+  const [b] = normalizeDecisions({ provider: 'openai', request: breq, response: { answers: [{ type: 'choice', name: 'b', choice: true, confidence: 0.9,
+    probabilities: [{ value: true, probability: 0.96 }, { value: false, probability: 0.04 }] }] }, receivedAt: at });
+  assert.deepEqual([b.options, b.selected, b.probabilities], [['true', 'false'], 'true', { true: 0.96, false: 0.04 }]);
+  assert.throws(() => oaq([{ ...allowAnswer, probabilities: [{ value: null, label: 'allow', probability: 0.95 }, { value: 'deny', probability: 0.05 }] }]), /malformed/, 'choice null value');
 });
