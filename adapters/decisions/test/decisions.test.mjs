@@ -154,3 +154,46 @@ test('CPU: 400 questions in one response normalize and route linearly', () => {
   const ms = performance.now() - t;
   assert.ok(ms < 2000, ms.toFixed(0) + ' ms');
 });
+
+// CTO review 6703556475: duplicate records from one model must not stand in for a missing one.
+test('consensus counts distinct models: two records from GLiDE never satisfy an all-model quorum for GLiDE + Jev', () => {
+  const g = one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
+  const g2 = one(sysReq(), glide({ eligible: 0.97, ineligible: 0.02, unclear: 0.01 }));
+  const out = route(consensusPolicy, 'refund_eligible', [...g, ...g2], { now });
+  assert.notEqual(out.outcome, 'act');
+  assert.ok(out.reasons.includes('duplicate_model'), JSON.stringify(out));
+  const k1 = compileDecisionPolicy({ decisions: { refund_eligible: { ...consensusPolicy.decisions.refund_eligible, consensus: { models: ['fastino/GLiDE', 'jev-1.13.0'], require: 2, max_divergence: 0.05 } } } });
+  assert.notEqual(route(k1, 'refund_eligible', [...g, ...g2], { now }).outcome, 'act', 'k = 2 also needs two distinct models');
+});
+
+// CTO review: OpenAI documents probabilities as arrays of {value, probability}, and score levels by label.
+test('decisions shape: array probabilities {value, probability} act, and score levels are matched by label', () => {
+  const recs = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95,
+    probabilities: [{ value: 'eligible', probability: 0.97 }, { value: 'ineligible', probability: 0.02 }, { value: 'unclear', probability: 0.01 }] }] }, receivedAt: at });
+  assert.deepEqual(recs[0].probabilities, { eligible: 0.97, ineligible: 0.02, unclear: 0.01 });
+  assert.equal(route(policy, 'refund_eligible', recs, { now }).outcome, 'act');
+  const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'How bad?', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
+  const [s] = normalizeDecisions({ provider: 'openai', request: sreq, response: { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'sev', score: 'severe',
+    probabilities: [{ value: 'none', probability: 0.02 }, { value: 'minor', probability: 0.06 }, { value: 'severe', probability: 0.92 }] }] }, receivedAt: at });
+  assert.deepEqual([s.options, s.selected], [['none', 'minor', 'severe'], 'severe']);
+  assert.throws(() => normalizeDecisions({ provider: 'openai', request: oaReq, response: { answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', probabilities: [{ value: 'eligible', probability: 0.5 }, { value: 'eligible', probability: 0.5 }] }] }, receivedAt: at }), /malformed/, 'duplicate values are not silently merged');
+});
+
+// CTO review: Fastino criteria may be arrays; a score's levels are then indexed positions.
+test('systemone shape: array criteria give string options for Choice and indexed levels for Score', () => {
+  const creq = { model: 'fastino/GLiDE', state: 's', questions: { refund_eligible: { type: 'choice', instructions: 'x', criteria: ['eligible', 'ineligible', 'unclear'] } } };
+  const [c] = one(creq, glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
+  assert.deepEqual(c.options, ['eligible', 'ineligible', 'unclear']);
+  assert.equal(route(policy, 'refund_eligible', [c], { now }).outcome, 'act');
+  const sreq = { model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
+  const [s] = one(sreq, { answers: { sev: { score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 } } } });
+  assert.deepEqual([s.options, s.selected], [['0', '1', '2'], '2']);
+});
+
+// CTO review: TypeSafe scores are fractional positions, not level indices. The selected level comes from the
+// probabilities; the fractional value is kept, never used to select.
+test('systemone shape: a fractional score selects the top-probability level and keeps the position', () => {
+  const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
+  const [s] = one(sreq, { answers: { sev: { score: 0.93, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
+  assert.deepEqual([s.selected, s.score_position], ['2', 0.93]);
+});

@@ -22,7 +22,20 @@ export function canonical(v) {
 }
 export const digest = v => 'sha256:' + createHash('sha256').update(v instanceof Uint8Array ? v : canonical(v)).digest('hex');
 const freeze = v => { if (v && typeof v === 'object') { Object.values(v).forEach(freeze); Object.freeze(v); } return v; };
-const numbers = o => isObj(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [String(k), v])) : null;
+// Probabilities arrive as an object {option: p} or, per OpenAI's docs as reported in review, an array of {value, probability}.
+function probs(o) {
+  if (isObj(o)) return Object.fromEntries(Object.entries(o).map(([k, v]) => [String(k), v]));
+  if (!Array.isArray(o)) return null;
+  const out = {};
+  for (const e of o) {
+    const k = isObj(e) ? e.value ?? e.label : undefined;
+    if (typeof k !== 'string' || Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
+    out[k] = e.probability;
+  }
+  return out;
+}
+const label = o => isObj(o) ? o.label ?? o.name ?? o.value ?? o.key : o;
+const argmax = p => Object.keys(p).reduce((a, k) => (a === null || p[k] > p[a] ? k : a), null);
 
 function record(base, fields) {
   return freeze({ object: 'curbi.decision.v1', ...base, ...fields });
@@ -46,11 +59,20 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
     const common = { question_id: id, type: q.type, refused: false };
     if (q.type === 'noul') return record(base, { ...common, ...binary(a.noul, a.confidence) });
     if (q.type !== 'choice' && q.type !== 'score') throw new Malformed(`question ${id} type ${q.type}`);
-    if (!isObj(q.criteria) || !isObj(a.probabilities)) throw new Malformed(`question ${id} needs criteria and probabilities`);
-    const selected = q.type === 'choice' ? a.choice : Number.isInteger(a.score) ? String(a.score) : undefined;
+    // Criteria: an object keyed by option, or an array. An array gives Choice its labels and Score its indexed levels.
+    const options = Array.isArray(q.criteria) ? (q.type === 'score' ? q.criteria.map((_, i) => String(i)) : q.criteria.map(c => String(label(c))))
+      : isObj(q.criteria) ? Object.keys(q.criteria) : null;
+    const probabilities = probs(a.probabilities);
+    if (!options?.length || !probabilities) throw new Malformed(`question ${id} needs criteria and probabilities`);
+    // A Score is an integer level index (GLiDE) or a fractional position (TypeSafe, per review). A fractional position
+    // never selects: the level comes from the probabilities, and the position is kept as score_position.
+    let selected, extra = {};
+    if (q.type === 'choice') selected = a.choice;
+    else if (Number.isInteger(a.score)) selected = String(a.score);
+    else if (typeof a.score === 'number' && Number.isFinite(a.score)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
-    return record(base, { ...common, options: Object.keys(q.criteria), probabilities: numbers(a.probabilities), selected,
-      confidence: isProb(a.confidence) ? a.confidence : null, ...(q.type === 'score' ? { expected_level: typeof a.expected_level === 'number' ? a.expected_level : null } : {}) });
+    return record(base, { ...common, options, probabilities, selected,
+      confidence: isProb(a.confidence) ? a.confidence : null, ...(q.type === 'score' ? { expected_level: typeof a.expected_level === 'number' ? a.expected_level : null, ...extra } : {}) });
   });
 }
 
@@ -67,15 +89,17 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     if (!isObj(q)) throw new Malformed('question ' + i);
     const id = typeof q.name === 'string' ? q.name : String(i), a = byName.get(id);
     if (!a) throw new Malformed(`question ${id} has no answer`);
-    const options = q.type === 'predicate' ? ['true', 'false'] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => isObj(o) ? String(o.name ?? o.value) : String(o));
+    const options = q.type === 'predicate' ? ['true', 'false'] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => String(label(o)));
     if (!Array.isArray(options) || !options.length) throw new Malformed(`question ${id} needs options`);
     const common = { question_id: id, type: q.type };
     if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
     if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
     if (q.type === 'predicate') return record(base, { ...common, refused: false, ...binary(a.probability, a.confidence) });
-    const selected = q.type === 'choice' ? a.choice : a.score === undefined ? undefined : String(a.score);
+    // A score answer may name its level by label or by index into the declared levels.
+    const selected = q.type === 'choice' ? a.choice : typeof a.score === 'string' ? a.score
+      : Number.isInteger(a.score) ? (options.includes(String(a.score)) ? String(a.score) : options[a.score]) : undefined;
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
-    return record(base, { ...common, refused: false, options, probabilities: numbers(a.probabilities), selected, confidence: isProb(a.confidence) ? a.confidence : null });
+    return record(base, { ...common, refused: false, options, probabilities: probs(a.probabilities), selected, confidence: isProb(a.confidence) ? a.confidence : null });
   });
 }
 
@@ -155,8 +179,11 @@ export function route(policy, questionId, records, { now } = {}) {
   const { models, require, max_divergence } = cfg.consensus;
   const reasons = [];
   for (const r of recs) { reasons.push(...assess(r, cfg)); if (!models.includes(r.model)) reasons.push('unpinned_model'); }
-  const counts = new Map();
-  for (const r of recs) if (r.selected !== null) counts.set(r.selected, (counts.get(r.selected) ?? 0) + 1);
+  // Agreement is counted in distinct models: a second record from one model never stands in for another model.
+  if (new Set(recs.map(r => r.provider + '\u0000' + r.model)).size !== recs.length) reasons.push('duplicate_model');
+  const voters = new Map();
+  for (const r of recs) if (r.selected !== null) voters.set(r.selected, (voters.get(r.selected) ?? new Set()).add(r.model));
+  const counts = new Map([...voters].map(([k, v]) => [k, v.size]));
   const selected = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   const needed = require === 'all' ? models.length : require;
   const seen = new Set(recs.map(r => r.model));
