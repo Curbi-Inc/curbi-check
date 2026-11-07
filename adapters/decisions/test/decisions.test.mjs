@@ -194,6 +194,37 @@ test('systemone shape: array criteria give string options for Choice and indexed
 // probabilities; the fractional value is kept, never used to select.
 test('systemone shape: a fractional score selects the top-probability level and keeps the position', () => {
   const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
-  const [s] = one(sreq, { answers: { sev: { score: 0.93, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
-  assert.deepEqual([s.selected, s.score_position], ['2', 0.93]);
+  const [s] = one(sreq, { answers: { sev: { score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
+  assert.deepEqual([s.selected, s.score_position], ['2', 1.84]);
+});
+
+// CTO re-review 6705370559, P1: a fractional position outside 0..top, or one that disagrees with the probability-weighted
+// mean of the levels, is an invalid typed record and must not act.
+const sevPolicy = compileDecisionPolicy({ decisions: { sev: { allowed: ['0', '1', '2'], act_at: 0.9, min_margin: 0.5,
+  pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30 } } });
+const tsScore = score => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
+  { answers: { sev: { score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } }, 'typesafe');
+test('TypeSafe fractional score: out of range or inconsistent with the probabilities never acts; the documented mean acts', () => {
+  for (const bad of [999.5, -1.5, 0.93]) {
+    const out = route(sevPolicy, 'sev', tsScore(bad), { now });
+    assert.notEqual(out.outcome, 'act', String(bad));
+    assert.ok(out.reasons.includes('inconsistent'), JSON.stringify(out));
+  }
+  assert.deepEqual(route(sevPolicy, 'sev', tsScore(1.93), { now }), { outcome: 'act', selected: '2', reasons: [] });
+});
+
+// CTO re-review, P2: OpenAI's documented Score answer has a fractional score and probability items with a numeric value
+// (the level index) and a label. The fractional position is kept, never turned into a vendor categorical answer.
+test('decisions shape: the documented numeric Score response normalizes, keeps its position and routes', () => {
+  const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'urgency', instructions: 'How urgent?', levels: [{ label: 'low' }, { label: 'medium' }, { label: 'high' }] }] };
+  const res = { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'urgency', score: 1.1,
+    probabilities: [{ value: 0, label: 'low', probability: 0.1 }, { value: 1, label: 'medium', probability: 0.7 }, { value: 2, label: 'high', probability: 0.2 }] }] };
+  const [r] = normalizeDecisions({ provider: 'openai', request: sreq, response: res, receivedAt: at });
+  assert.deepEqual([r.options, r.probabilities, r.selected, r.score_position], [['low', 'medium', 'high'], { low: 0.1, medium: 0.7, high: 0.2 }, 'medium', 1.1]);
+  const p = compileDecisionPolicy({ decisions: { urgency: { allowed: ['low', 'medium', 'high'], act_at: 0.6, min_margin: 0.4, pin: [{ provider: 'openai', model: 'gpt-6-luna' }], calibration, max_calibration_age_days: 30 } } });
+  assert.equal(route(p, 'urgency', [r], { now }).outcome, 'act');
+  const [bad] = normalizeDecisions({ provider: 'openai', request: sreq, response: { ...res, answers: [{ ...res.answers[0], score: 2.9 }] }, receivedAt: at });
+  assert.ok(route(p, 'urgency', [bad], { now }).reasons.includes('inconsistent'));
+  const [whole] = normalizeDecisions({ provider: 'openai', request: sreq, response: { ...res, answers: [{ ...res.answers[0], score: 1 }] }, receivedAt: at });
+  assert.equal(whole.selected, 'medium', 'an integer score is a level index');
 });

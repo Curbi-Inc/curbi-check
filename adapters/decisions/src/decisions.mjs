@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto';
 
 export const CHECKER = 'curbi-check/decisions 0.1.0';
 const SUM_TOLERANCE = 0.01;
+// A fractional score is the probability-weighted mean level index; allow this much rounding before calling it inconsistent.
+const POSITION_TOLERANCE = 0.05;
 const DAY = 86_400_000;
 
 class Malformed extends Error { constructor(msg) { super('malformed: ' + msg); this.code = 'malformed'; } }
@@ -23,12 +25,15 @@ export function canonical(v) {
 export const digest = v => 'sha256:' + createHash('sha256').update(v instanceof Uint8Array ? v : canonical(v)).digest('hex');
 const freeze = v => { if (v && typeof v === 'object') { Object.values(v).forEach(freeze); Object.freeze(v); } return v; };
 // Probabilities arrive as an object {option: p} or, per OpenAI's docs as reported in review, an array of {value, probability}.
-function probs(o) {
+// A Score item can carry a numeric level index as value plus a label (OpenAI's documented Score response); the label
+// names the option, and a bare numeric value indexes the declared options.
+function probs(o, options) {
   if (isObj(o)) return Object.fromEntries(Object.entries(o).map(([k, v]) => [String(k), v]));
   if (!Array.isArray(o)) return null;
   const out = {};
   for (const e of o) {
-    const k = isObj(e) ? e.value ?? e.label : undefined;
+    const k = !isObj(e) ? undefined : typeof e.value === 'string' ? e.value : typeof e.label === 'string' ? e.label
+      : Number.isInteger(e.value) && options && e.value >= 0 && e.value < options.length ? options[e.value] : undefined;
     if (typeof k !== 'string' || Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
     out[k] = e.probability;
   }
@@ -96,10 +101,16 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
     if (q.type === 'predicate') return record(base, { ...common, refused: false, ...binary(a.probability, a.confidence) });
     // A score answer may name its level by label or by index into the declared levels.
-    const selected = q.type === 'choice' ? a.choice : typeof a.score === 'string' ? a.score
-      : Number.isInteger(a.score) ? (options.includes(String(a.score)) ? String(a.score) : options[a.score]) : undefined;
+    // A score answer names its level by label, by integer index, or (documented) by a fractional position. A fractional
+    // position never selects: the level comes from the probabilities and the position is kept as score_position.
+    const probabilities = probs(a.probabilities, options);
+    let selected, extra = {};
+    if (q.type === 'choice') selected = a.choice;
+    else if (typeof a.score === 'string') selected = a.score;
+    else if (Number.isInteger(a.score)) selected = options.includes(String(a.score)) ? String(a.score) : options[a.score];
+    else if (typeof a.score === 'number' && Number.isFinite(a.score) && isObj(probabilities)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
-    return record(base, { ...common, refused: false, options, probabilities: probs(a.probabilities), selected, confidence: isProb(a.confidence) ? a.confidence : null });
+    return record(base, { ...common, refused: false, options, probabilities, selected, confidence: isProb(a.confidence) ? a.confidence : null, ...extra });
   });
 }
 
@@ -141,6 +152,10 @@ function shapeOk(r, cfg) {
   if (keys.length !== r.options.length || !r.options.every(o => Object.hasOwn(p, o)) || !keys.every(k => isProb(p[k]))) return false;
   if (Math.abs(keys.reduce((s, k) => s + p[k], 0) - 1) > SUM_TOLERANCE) return false;
   if (!r.options.includes(r.selected) || !cfg.allowed.includes(r.selected)) return false;
+  if (r.score_position !== undefined) {
+    const pos = r.score_position, mean = r.options.reduce((m, o, i) => m + i * p[o], 0);
+    if (!(pos >= 0 && pos <= r.options.length - 1) || Math.abs(pos - mean) > POSITION_TOLERANCE) return false;
+  }
   return keys.every(k => p[k] <= p[r.selected] + 1e-12);
 }
 function assess(r, cfg) {
