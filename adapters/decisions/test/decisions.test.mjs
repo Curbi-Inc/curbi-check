@@ -1,0 +1,156 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Curbi, Inc.
+// Decision-model adapter: typed answers are checked against policy with arithmetic and comparison only.
+// Fixtures are synthetic. Their shapes follow vendor doc pages as summarized by search, not loaded docs;
+// FIELDS.md lists every field name still to be confirmed from a primary source.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
+import { normalizeSystemone, normalizeDecisions, route, decisionReceipt, checkAction, compileDecisionPolicy } from '../src/decisions.mjs';
+
+const at = '2026-11-07T04:00:00.000Z';
+const now = Date.parse(at);
+const calibration = { dataset: 'refund-labels-2026-10', accuracy_at_threshold: 0.97, measured_at: '2026-10-30T00:00:00Z' };
+const policy = compileDecisionPolicy({ decisions: { refund_eligible: {
+  allowed: ['eligible', 'ineligible', 'unclear'], act_at: 0.92, min_margin: 0.5,
+  pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }, { provider: 'typesafe', model: 'jev-1.13.0' }, { provider: 'openai', model: 'gpt-6-luna' }],
+  below: 'hand_off', calibration, max_calibration_age_days: 30, operations: { eligible: 'billing.refund' } } } });
+
+const sysReq = (type = 'choice') => ({ model: 'fastino/GLiDE', state: { ticket: 'Order arrived broken' },
+  questions: { refund_eligible: { type, instructions: 'Is a refund allowed?', ...(type === 'noul' ? {} : { criteria: { eligible: 'policy allows', ineligible: 'policy forbids', unclear: 'not enough info' } }) } } });
+const glide = (probabilities, extra = {}) => ({ model: 'glide', answers: { refund_eligible: {
+  choice: Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0][0], confidence: 0.9, probabilities, ...extra } } });
+const one = (req, res, provider = 'fastino') => normalizeSystemone({ provider, request: req, response: res, receivedAt: at });
+
+test('systemone choice: a confident, pinned, calibrated answer acts, and the receipt binds both digests', () => {
+  const records = one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
+  assert.equal(records.length, 1);
+  const r = records[0];
+  assert.deepEqual([r.object, r.shape, r.type, r.selected, r.model], ['curbi.decision.v1', 'systemone', 'choice', 'eligible', 'fastino/GLiDE']);
+  assert.match(r.request_digest, /^sha256:[0-9a-f]{64}$/);
+  const out = route(policy, 'refund_eligible', records, { now });
+  assert.deepEqual([out.outcome, out.selected, out.reasons], ['act', 'eligible', []]);
+  const receipt = decisionReceipt({ policy, questionId: 'refund_eligible', records, result: out, prev: null });
+  assert.deepEqual([receipt.object, receipt.signed, receipt.provider_signed, receipt.prev_receipt_digest], ['curbi.decision-receipt.v1', false, false, null]);
+  assert.deepEqual(receipt.record_digests.length, 1);
+  assert.deepEqual(checkAction(policy, 'refund_eligible', out, 'billing.refund'), []);
+});
+
+test('malformed probabilities are inconsistent, never act', () => {
+  for (const p of [{ eligible: 1.2, ineligible: -0.2, unclear: 0 }, { eligible: 0.7, ineligible: 0.1, unclear: 0.1 }, { eligible: 'high', ineligible: 0, unclear: 0 }]) {
+    const out = route(policy, 'refund_eligible', one(sysReq(), glide(p)), { now });
+    assert.equal(out.outcome, 'hand_off'); assert.ok(out.reasons.includes('inconsistent'), JSON.stringify(out));
+  }
+  assert.throws(() => one(sysReq(), { answers: {} }), /malformed/);
+});
+
+test('a selected option that is not the top-probability option, or outside allowed, is inconsistent', () => {
+  const lied = glide({ eligible: 0.05, ineligible: 0.94, unclear: 0.01 }, { choice: 'eligible' });
+  assert.ok(route(policy, 'refund_eligible', one(sysReq(), lied), { now }).reasons.includes('inconsistent'));
+  const outside = glide({ eligible: 0.01, ineligible: 0.01, unclear: 0.01, approve_all: 0.97 });
+  assert.ok(route(policy, 'refund_eligible', one(sysReq(), outside), { now }).reasons.includes('inconsistent'));
+});
+
+test('below threshold or margin goes to the policy’s below rule: hand_off by default, deny when set', () => {
+  const low = one(sysReq(), glide({ eligible: 0.80, ineligible: 0.15, unclear: 0.05 }));
+  assert.deepEqual(route(policy, 'refund_eligible', low, { now }), { outcome: 'hand_off', selected: 'eligible', reasons: ['below_threshold'] });
+  const close = one(sysReq(), glide({ eligible: 0.93, ineligible: 0.07, unclear: 0 }));
+  assert.equal(route(compileDecisionPolicy({ decisions: { refund_eligible: { ...policy.decisions.refund_eligible, act_at: 0.9, min_margin: 0.9 } } }), 'refund_eligible', close, { now }).reasons[0], 'below_margin');
+  const deny = compileDecisionPolicy({ decisions: { refund_eligible: { ...policy.decisions.refund_eligible, below: 'deny' } } });
+  assert.equal(route(deny, 'refund_eligible', low, { now }).outcome, 'deny');
+});
+
+test('an unpinned model or version is refused even when confident', () => {
+  const req = { ...sysReq(), model: 'fastino/GLiDE-2' };
+  const out = route(policy, 'refund_eligible', one(req, glide({ eligible: 0.99, ineligible: 0.01, unclear: 0 })), { now });
+  assert.equal(out.outcome, 'hand_off'); assert.ok(out.reasons.includes('unpinned_model'));
+});
+
+test('a stale or missing calibration blocks act when the threshold gates an action', () => {
+  const confident = one(sysReq(), glide({ eligible: 0.99, ineligible: 0.01, unclear: 0 }));
+  const stale = compileDecisionPolicy({ decisions: { refund_eligible: { ...policy.decisions.refund_eligible, calibration: { ...calibration, measured_at: '2026-08-01T00:00:00Z' } } } });
+  assert.ok(route(stale, 'refund_eligible', confident, { now }).reasons.includes('calibration_stale'));
+  const { calibration: _, ...rest } = policy.decisions.refund_eligible;
+  assert.ok(route(compileDecisionPolicy({ decisions: { refund_eligible: rest } }), 'refund_eligible', confident, { now }).reasons.includes('calibration_missing'));
+});
+
+test('systemone noul: one probability becomes a two-option record; Jev gives no confidence so it is computed', () => {
+  const p = compileDecisionPolicy({ decisions: { refund_eligible: { allowed: ['true', 'false'], act_at: 0.9, min_margin: 0.8, pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30, operations: { true: 'billing.refund' } } } });
+  const req = { ...sysReq('noul'), model: 'jev-1.13.0' };
+  const recs = one(req, { answers: { refund_eligible: { noul: 0.97 } } }, 'typesafe');
+  assert.deepEqual([recs[0].selected, recs[0].probabilities, Math.round(recs[0].confidence * 100)], ['true', { true: 0.97, false: 0.030000000000000027 }, 94]);
+  assert.equal(route(p, 'refund_eligible', recs, { now }).outcome, 'act');
+  assert.throws(() => one(req, { answers: { refund_eligible: { noul: true } } }, 'typesafe'), /malformed/, 'not a boolean');
+});
+
+test('systemone score: the integer level is selected; expected_level is kept but never selects', () => {
+  const req = { model: 'fastino/GLiDE', state: 's', questions: { severity: { type: 'score', instructions: 'How bad?', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
+  const [r] = one(req, { answers: { severity: { score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } });
+  assert.deepEqual([r.type, r.selected, r.expected_level], ['score', '2', 1.9]);
+});
+
+const oaReq = { model: 'gpt-6-luna', input: 'Order arrived broken', questions: [{ type: 'choice', name: 'refund_eligible', instructions: 'Is a refund allowed?', choices: ['eligible', 'ineligible', 'unclear'] }] };
+test('decisions shape: a choice with per-option probabilities acts; without them the margin is unavailable and it hands off', () => {
+  const withP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95, probabilities: { eligible: 0.97, ineligible: 0.02, unclear: 0.01 } }] }, receivedAt: at });
+  assert.equal(route(policy, 'refund_eligible', withP, { now }).outcome, 'act');
+  const noP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95 }] }, receivedAt: at });
+  assert.deepEqual(route(policy, 'refund_eligible', noP, { now }).reasons, ['margin_unavailable']);
+});
+
+test('decisions shape: a refusal never acts, and a predicate maps to true/false', () => {
+  const refused = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'refusal', name: 'refund_eligible' }] }, receivedAt: at });
+  assert.deepEqual(route(policy, 'refund_eligible', refused, { now }).reasons, ['refused']);
+  const pred = normalizeDecisions({ provider: 'openai', request: { ...oaReq, questions: [{ type: 'predicate', name: 'q', instructions: 'x' }] }, response: { model: 'gpt-6-luna', answers: [{ type: 'predicate', name: 'q', probability: 0.2 }] }, receivedAt: at });
+  assert.deepEqual([pred[0].type, pred[0].selected, pred[0].probabilities.false], ['predicate', 'false', 0.8]);
+});
+
+const consensusPolicy = compileDecisionPolicy({ decisions: { refund_eligible: { ...policy.decisions.refund_eligible,
+  below: 'escalate', consensus: { models: ['fastino/GLiDE', 'jev-1.13.0'], require: 'all', max_divergence: 0.05 } } } });
+const jevAnswer = p => one({ ...sysReq(), model: 'jev-1.13.0' }, glide(p), 'typesafe');
+test('consensus: agreement acts; disagreement or divergence hands off; a missing model escalates to it', () => {
+  const g = one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
+  assert.deepEqual(route(consensusPolicy, 'refund_eligible', g, { now }), { outcome: 'escalate', selected: 'eligible', reasons: ['consensus_incomplete'], next_model: 'jev-1.13.0' });
+  assert.equal(route(consensusPolicy, 'refund_eligible', [...g, ...jevAnswer({ eligible: 0.95, ineligible: 0.04, unclear: 0.01 })], { now }).outcome, 'act');
+  const split = route(consensusPolicy, 'refund_eligible', [...g, ...jevAnswer({ eligible: 0.02, ineligible: 0.97, unclear: 0.01 })], { now });
+  assert.deepEqual([split.outcome, split.reasons], ['hand_off', ['consensus_disagreement']]);
+  const drift = route(consensusPolicy, 'refund_eligible', [...g, ...jevAnswer({ eligible: 0.80, ineligible: 0.15, unclear: 0.05 })], { now });
+  assert.ok(drift.reasons.includes('consensus_divergence'));
+});
+
+test('an action that contradicts the checked decision is a finding', () => {
+  const acted = route(policy, 'refund_eligible', one(sysReq(), glide({ eligible: 0.01, ineligible: 0.98, unclear: 0.01 })), { now });
+  assert.deepEqual(checkAction(policy, 'refund_eligible', acted, 'billing.refund'), [{ rule: 'decision:contradicted', why: 'Decision refund_eligible selected "ineligible"; billing.refund needs "eligible".' }]);
+  const handed = route(policy, 'refund_eligible', one(sysReq(), glide({ eligible: 0.6, ineligible: 0.3, unclear: 0.1 })), { now });
+  assert.equal(checkAction(policy, 'refund_eligible', handed, 'billing.refund')[0].rule, 'decision:not_acted');
+});
+
+test('determinism: the same records and policy give byte-identical results and receipts; input objects are not mutated', () => {
+  const res = glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }); const frozen = JSON.stringify(res);
+  const a = one(sysReq(), res), b = one(sysReq(), structuredClone(res));
+  const ra = route(policy, 'refund_eligible', a, { now }), rb = route(policy, 'refund_eligible', b, { now });
+  assert.equal(JSON.stringify(decisionReceipt({ policy, questionId: 'refund_eligible', records: a, result: ra, prev: 'sha256:' + '0'.repeat(64) })),
+    JSON.stringify(decisionReceipt({ policy, questionId: 'refund_eligible', records: b, result: rb, prev: 'sha256:' + '0'.repeat(64) })));
+  assert.equal(JSON.stringify(res), frozen);
+});
+
+test('policy validation refuses unknown fields and bad thresholds', () => {
+  for (const bad of [{ allowed: ['a'], act_at: 1.5 }, { allowed: [], act_at: 0.9 }, { allowed: ['a'], act_at: 0.9, below: 'act' }, { allowed: ['a'], act_at: 0.9, extra: 1 }, { allowed: ['a'], act_at: 0.9, consensus: { models: [], require: 'all', max_divergence: 0.1 } }])
+    assert.throws(() => compileDecisionPolicy({ decisions: { q: bad } }), /policy\.decisions\.q/);
+});
+
+test('CPU: 400 questions in one response normalize and route linearly', () => {
+  const qs = {}, ans = {}, decisions = {};
+  for (let i = 0; i < 400; i++) {
+    const options = Object.fromEntries(Array.from({ length: 255 }, (_, k) => ['o' + k, 'option ' + k]));
+    qs['q' + i] = { type: 'choice', instructions: 'x', criteria: options };
+    const probabilities = Object.fromEntries(Object.keys(options).map((k, j) => [k, j ? 0.0001 : 1 - 254 * 0.0001]));
+    ans['q' + i] = { choice: 'o0', confidence: 0.9, probabilities };
+    decisions['q' + i] = { allowed: Object.keys(options), act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }], calibration, max_calibration_age_days: 30 };
+  }
+  const p = compileDecisionPolicy({ decisions });
+  const t = performance.now();
+  const recs = one({ model: 'fastino/GLiDE', state: 's', questions: qs }, { answers: ans });
+  for (let i = 0; i < 400; i++) assert.equal(route(p, 'q' + i, recs.filter(r => r.question_id === 'q' + i), { now }).outcome, 'act');
+  const ms = performance.now() - t;
+  assert.ok(ms < 2000, ms.toFixed(0) + ' ms');
+});
