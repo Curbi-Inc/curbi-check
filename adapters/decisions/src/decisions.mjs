@@ -32,8 +32,14 @@ function probs(o, options) {
   if (!Array.isArray(o)) return null;
   const out = {};
   for (const e of o) {
-    const k = !isObj(e) ? undefined : typeof e.value === 'string' ? e.value : typeof e.label === 'string' ? e.label
-      : Number.isInteger(e.value) && options && e.value >= 0 && e.value < options.length ? options[e.value] : undefined;
+    let k;
+    if (isObj(e) && typeof e.value === 'string') k = e.value;
+    else if (isObj(e) && typeof e.value === 'number') {
+      // A numeric value is a level index: it must be in range and name the declared level its label claims.
+      if (!options || !Number.isInteger(e.value) || e.value < 0 || e.value >= options.length) throw new Malformed('probabilities: level index out of range');
+      if (e.label !== undefined && e.label !== options[e.value]) throw new Malformed('probabilities: label does not match its level index');
+      k = options[e.value];
+    } else if (isObj(e) && typeof e.label === 'string') k = e.label;
     if (typeof k !== 'string' || Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
     out[k] = e.probability;
   }
@@ -72,8 +78,9 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
     // A Score is an integer level index (GLiDE) or a fractional position (TypeSafe, per review). A fractional position
     // never selects: the level comes from the probabilities, and the position is kept as score_position.
     let selected, extra = {};
+    // GLiDE's score is an integer level index. TypeSafe's is a mean position, whole numbers included (per CTO re-review).
     if (q.type === 'choice') selected = a.choice;
-    else if (Number.isInteger(a.score)) selected = String(a.score);
+    else if (provider === 'fastino') { if (Number.isInteger(a.score)) selected = String(a.score); }
     else if (typeof a.score === 'number' && Number.isFinite(a.score)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
     return record(base, { ...common, options, probabilities, selected,
@@ -107,7 +114,7 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     let selected, extra = {};
     if (q.type === 'choice') selected = a.choice;
     else if (typeof a.score === 'string') selected = a.score;
-    else if (Number.isInteger(a.score)) selected = options.includes(String(a.score)) ? String(a.score) : options[a.score];
+    // Every numeric OpenAI score is a mean position, whole numbers included (per CTO re-review); a label names a level.
     else if (typeof a.score === 'number' && Number.isFinite(a.score) && isObj(probabilities)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
     return record(base, { ...common, refused: false, options, probabilities, selected, confidence: isProb(a.confidence) ? a.confidence : null, ...extra });

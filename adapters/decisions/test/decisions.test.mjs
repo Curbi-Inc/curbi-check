@@ -226,5 +226,38 @@ test('decisions shape: the documented numeric Score response normalizes, keeps i
   const [bad] = normalizeDecisions({ provider: 'openai', request: sreq, response: { ...res, answers: [{ ...res.answers[0], score: 2.9 }] }, receivedAt: at });
   assert.ok(route(p, 'urgency', [bad], { now }).reasons.includes('inconsistent'));
   const [whole] = normalizeDecisions({ provider: 'openai', request: sreq, response: { ...res, answers: [{ ...res.answers[0], score: 1 }] }, receivedAt: at });
-  assert.equal(whole.selected, 'medium', 'an integer score is a level index');
+  assert.deepEqual([whole.selected, whole.score_position], ['medium', 1], 'an integer score is still a position, not a level index');
+});
+
+// CTO re-review 6707270386, P1a: for TypeSafe and OpenAI every numeric score is a mean position, whole numbers included.
+// GLiDE keeps its separate integer level-index contract.
+test('whole-number scores are positions for TypeSafe and OpenAI: checked against the mean; GLiDE indices still select', () => {
+  const ts = (score, probabilities) => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
+    { answers: { sev: { score, confidence: 0.9, probabilities } } }, 'typesafe');
+  const bad = route(sevPolicy, 'sev', ts(0, { '0': 0.95, '1': 0, '2': 0.05 }), { now });
+  assert.notEqual(bad.outcome, 'act'); assert.ok(bad.reasons.includes('inconsistent'), JSON.stringify(bad));
+  const goodPolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, act_at: 0.85 } } });
+  assert.deepEqual(route(goodPolicy, 'sev', ts(1, { '0': 0.05, '1': 0.9, '2': 0.05 }), { now }), { outcome: 'act', selected: '1', reasons: [] }, 'a valid integer mean acts');
+  const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'urgency', instructions: 'x', levels: [{ label: 'low' }, { label: 'medium' }, { label: 'high' }] }] };
+  const oa = (score, ps) => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'urgency', score,
+    probabilities: ps.map((probability, value) => ({ value, label: ['low', 'medium', 'high'][value], probability })) }] }, receivedAt: at });
+  const p = compileDecisionPolicy({ decisions: { urgency: { allowed: ['low', 'medium', 'high'], act_at: 0.6, min_margin: 0.4, pin: [{ provider: 'openai', model: 'gpt-6-luna' }], calibration, max_calibration_age_days: 30 } } });
+  assert.ok(route(p, 'urgency', oa(0, [0.95, 0, 0.05]), { now }).reasons.includes('inconsistent'));
+  assert.equal(route(p, 'urgency', oa(1, [0.1, 0.8, 0.1]), { now }).outcome, 'act');
+  const glidePolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }] } } });
+  const [g] = one({ model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
+    { answers: { sev: { score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } });
+  assert.deepEqual([g.selected, g.score_position], ['2', undefined], 'GLiDE integer score is a level index');
+  assert.equal(route(glidePolicy, 'sev', [g], { now }).outcome, 'act');
+});
+
+// CTO re-review, P1b: a label must not paper over an invalid numeric index. Range, uniqueness and index-to-declared-level
+// identity are checked before routing; a mismatch is malformed.
+test('OpenAI numeric value plus label: duplicate, out-of-range or swapped indices are malformed', () => {
+  const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
+  const run = probabilities => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score: 1.93, probabilities }] }, receivedAt: at });
+  assert.throws(run([{ value: 0, label: 'none', probability: 0.02 }, { value: 0, label: 'minor', probability: 0.03 }, { value: 0, label: 'severe', probability: 0.95 }]), /malformed/, 'duplicate index');
+  assert.throws(run([{ value: 999, label: 'none', probability: 0.02 }, { value: 999, label: 'minor', probability: 0.03 }, { value: 999, label: 'severe', probability: 0.95 }]), /malformed/, 'out of range');
+  assert.throws(run([{ value: 2, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.03 }, { value: 0, label: 'severe', probability: 0.95 }]), /malformed/, 'swapped labels');
+  assert.doesNotThrow(run([{ value: 0, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.03 }, { value: 2, label: 'severe', probability: 0.95 }]));
 });
