@@ -28,5 +28,5 @@ checkAction(policy, 'refund_eligible', result, 'billing.refund');               
 
 **Limits:**
 - Vendor probabilities are reported, not true. Set each threshold on labeled data; Curbi enforces a threshold but can't make it right.
-- Field names aren't confirmed from primary docs yet; see [FIELDS.md](FIELDS.md). Microsoft-Decision-1 isn't modeled until its API shape is confirmed.
+- Each vendor's raw answer is validated against its documented schema before normalization; [FIELDS.md](FIELDS.md) records what's confirmed from primary sources. Microsoft-Decision-1 isn't modeled until its API shape is confirmed.
 - Pass raw `requestBytes` and `responseBytes` to digest exactly what was sent and received. Otherwise the digests cover the canonical JSON of the parsed objects.

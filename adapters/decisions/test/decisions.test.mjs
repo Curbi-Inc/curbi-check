@@ -18,7 +18,7 @@ const policy = compileDecisionPolicy({ decisions: { refund_eligible: {
 
 const sysReq = (type = 'choice') => ({ model: 'fastino/GLiDE', state: { ticket: 'Order arrived broken' },
   questions: { refund_eligible: { type, instructions: 'Is a refund allowed?', ...(type === 'noul' ? {} : { criteria: { eligible: 'policy allows', ineligible: 'policy forbids', unclear: 'not enough info' } }) } } });
-const glide = (probabilities, extra = {}) => ({ model: 'glide', answers: { refund_eligible: {
+const glide = (probabilities, extra = {}) => ({ model: 'glide', answers: { refund_eligible: { type: 'choice',
   choice: Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0][0], confidence: 0.9, probabilities, ...extra } } });
 const one = (req, res, provider = 'fastino') => normalizeSystemone({ provider, request: req, response: res, receivedAt: at });
 
@@ -85,7 +85,7 @@ test('systemone noul: one probability becomes a two-option record; Jev gives no 
 
 test('systemone score: the integer level is selected; expected_level is kept but never selects', () => {
   const req = { model: 'fastino/GLiDE', state: 's', questions: { severity: { type: 'score', instructions: 'How bad?', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
-  const [r] = one(req, { answers: { severity: { score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } });
+  const [r] = one(req, { answers: { severity: { type: 'score', score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } });
   assert.deepEqual([r.type, r.selected, r.expected_level], ['score', '2', 1.9]);
 });
 
@@ -144,7 +144,7 @@ test('CPU: 400 questions in one response normalize and route linearly', () => {
     const options = Object.fromEntries(Array.from({ length: 255 }, (_, k) => ['o' + k, 'option ' + k]));
     qs['q' + i] = { type: 'choice', instructions: 'x', criteria: options };
     const probabilities = Object.fromEntries(Object.keys(options).map((k, j) => [k, j ? 0.0001 : 1 - 254 * 0.0001]));
-    ans['q' + i] = { choice: 'o0', confidence: 0.9, probabilities };
+    ans['q' + i] = { type: 'choice', choice: 'o0', confidence: 0.9, probabilities };
     decisions['q' + i] = { allowed: Object.keys(options), act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }], calibration, max_calibration_age_days: 30 };
   }
   const p = compileDecisionPolicy({ decisions });
@@ -182,19 +182,17 @@ test('decisions shape: array probabilities {value, probability} act, and score l
 // CTO review: Fastino criteria may be arrays; a score's levels are then indexed positions.
 test('systemone shape: array criteria give string options for Choice and indexed levels for Score', () => {
   const creq = { model: 'fastino/GLiDE', state: 's', questions: { refund_eligible: { type: 'choice', instructions: 'x', criteria: ['eligible', 'ineligible', 'unclear'] } } };
-  const [c] = one(creq, glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
-  assert.deepEqual(c.options, ['eligible', 'ineligible', 'unclear']);
-  assert.equal(route(policy, 'refund_eligible', [c], { now }).outcome, 'act');
+  assert.throws(() => one(creq, glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 })), /malformed/, 'Choice criteria are an object for both vendors (per CTO review 6710879991)');
   const sreq = { model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
-  const [s] = one(sreq, { answers: { sev: { score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 } } } });
+  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: ['none', 'minor', 'severe'] } } });
   assert.deepEqual([s.options, s.selected], [['0', '1', '2'], '2']);
 });
 
 // CTO review: TypeSafe scores are fractional positions, not level indices. The selected level comes from the
 // probabilities; the fractional value is kept, never used to select.
 test('systemone shape: a fractional score selects the top-probability level and keeps the position', () => {
-  const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
-  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
+  const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
+  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 }, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
   assert.deepEqual([s.selected, s.score_position], ['2', 1.84]);
 });
 
@@ -202,8 +200,8 @@ test('systemone shape: a fractional score selects the top-probability level and 
 // mean of the levels, is an invalid typed record and must not act.
 const sevPolicy = compileDecisionPolicy({ decisions: { sev: { allowed: ['0', '1', '2'], act_at: 0.9, min_margin: 0.5,
   pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30 } } });
-const tsScore = score => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
-  { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } }, 'typesafe');
+const tsScore = score => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
+  { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
 test('TypeSafe fractional score: out of range or inconsistent with the probabilities never acts; the documented mean acts', () => {
   for (const bad of [999.5, -1.5, 0.93]) {
     const out = route(sevPolicy, 'sev', tsScore(bad), { now });
@@ -232,8 +230,8 @@ test('decisions shape: the documented numeric Score response normalizes, keeps i
 // CTO re-review 6707270386, P1a: for TypeSafe and OpenAI every numeric score is a mean position, whole numbers included.
 // GLiDE keeps its separate integer level-index contract.
 test('whole-number scores are positions for TypeSafe and OpenAI: checked against the mean; GLiDE indices still select', () => {
-  const ts = (score, probabilities) => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
-    { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities } } }, 'typesafe');
+  const ts = (score, probabilities) => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
+    { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
   const bad = route(sevPolicy, 'sev', ts(0, { '0': 0.95, '1': 0, '2': 0.05 }), { now });
   assert.notEqual(bad.outcome, 'act'); assert.ok(bad.reasons.includes('inconsistent'), JSON.stringify(bad));
   const goodPolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, act_at: 0.85 } } });
@@ -246,8 +244,8 @@ test('whole-number scores are positions for TypeSafe and OpenAI: checked against
   assert.equal(route(p, 'urgency', oa(1, [0.1, 0.8, 0.1]), { now }).outcome, 'act');
   const glidePolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }] } } });
   const [g] = one({ model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
-    { answers: { sev: { score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } });
-  assert.deepEqual([g.selected, g.score_position], ['2', undefined], 'GLiDE integer score is a level index');
+    { answers: { sev: { type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } } });
+  assert.deepEqual([g.selected, g.score_position], ['2', 1.93], 'GLiDE integer score is a level index; its expected_level is the checked position');
   assert.equal(route(glidePolicy, 'sev', [g], { now }).outcome, 'act');
 });
 
@@ -302,13 +300,14 @@ test('decisions shape: malformed OpenAI wire types are refused; valid numeric me
 const tsChoiceReq = { model: 'jev-1.13.0', state: 's', questions: { q: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } } } };
 const tsPolicy = compileDecisionPolicy({ decisions: { q: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }] } } });
 test('systemone answer discriminant: a mismatched type is malformed, a refusal never acts, a matching type acts', () => {
-  const ans = type => one(tsChoiceReq, { answers: { q: { ...(type ? { type } : {}), choice: 'allow', probabilities: { allow: 0.95, deny: 0.05 } } } }, 'typesafe');
+  const ans = type => one(tsChoiceReq, { answers: { q: { ...(type ? { type } : {}), choice: 'allow', confidence: 0.9, probabilities: { allow: 0.95, deny: 0.05 } } } }, 'typesafe');
   assert.throws(() => ans('score'), /malformed/, 'score answer to a choice question');
   assert.throws(() => ans(undefined), /malformed/, 'TypeSafe answers carry their type');
   const refused = route(tsPolicy, 'q', ans('refusal'), { now });
   assert.deepEqual([refused.outcome, refused.reasons], ['hand_off', ['refused']]);
   assert.equal(route(tsPolicy, 'q', ans('choice'), { now }).outcome, 'act', 'control');
-  assert.equal(route(policy, 'refund_eligible', one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 })), { now }).outcome, 'act', 'GLiDE without a type field still acts');
+  const { type: _t, ...untyped } = glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }).answers.refund_eligible;
+  assert.throws(() => one(sysReq(), { answers: { refund_eligible: untyped } }), /malformed/, 'GLiDE answers require type too (Fastino OpenAPI, per CTO review 6710879991)');
 });
 
 test('decisions shape: choice membership is exact by raw type; "true" is not the declared boolean true', () => {
@@ -329,4 +328,55 @@ test('decisions shape: only predicate, choice and score are supported; any other
   assert.throws(() => normalizeDecisions({ provider: 'openai', request: ureq, response: { answers: [{ type: 'unsupported', name: 'u', score: 1.93,
     probabilities: [{ value: 'none', probability: 0.02 }, { value: 'minor', probability: 0.03 }, { value: 'severe', probability: 0.95 }] }] }, receivedAt: at }), /malformed/);
   assert.throws(() => one({ model: 'jev-1.13.0', state: 's', questions: { u: { type: 'box', instructions: 'x', criteria: { a: 'a' } } } }, { answers: { u: { type: 'box', choice: 'a', probabilities: { a: 1 } } } }, 'typesafe'), /malformed/);
+});
+
+// CTO review 6710879991: each vendor's documented answer schema (Fastino and TypeSafe OpenAPI) is validated before any
+// normalization: required fields, types and domains. A malformed answer never reaches routing.
+const gChoice = () => ({ type: 'choice', choice: 'allow', confidence: 0.9, probabilities: { allow: 0.95, deny: 0.05 } });
+const gNoul = () => ({ type: 'noul', noul: 0.97, confidence: 0.94 });
+const gScore = () => ({ type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] });
+const gReq = { model: 'fastino/GLiDE', state: 's', questions: {
+  c: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } },
+  n: { type: 'noul', instructions: 'x' },
+  s: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
+const gPolicy = compileDecisionPolicy({ decisions: Object.fromEntries([['c', ['allow', 'deny']], ['n', ['true', 'false']], ['s', ['0', '1', '2']]]
+  .map(([id, allowed]) => [id, { allowed, act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }] }])) });
+const gRun = answers => one(gReq, { model: 'glide', answers: { c: gChoice(), n: gNoul(), s: gScore(), ...answers } });
+const without = (o, k) => { const c = { ...o }; delete c[k]; return c; };
+test('GLiDE raw schema: required fields, types and domains are validated before routing; valid controls act', () => {
+  const ok = gRun({});
+  for (const id of ['c', 'n', 's']) assert.equal(route(gPolicy, id, ok, { now }).outcome, 'act', 'control ' + id);
+  const bad = [];
+  for (const k of ['type', 'confidence']) bad.push(['choice -' + k, { c: without(gChoice(), k) }], ['noul -' + k, { n: without(gNoul(), k) }]);
+  for (const k of ['type', 'expected_level', 'confidence', 'legend', 'probabilities']) bad.push(['score -' + k, { s: without(gScore(), k) }]);
+  for (const v of ['0.9', null, -0.1, 1.1]) bad.push(['choice confidence ' + v, { c: { ...gChoice(), confidence: v } }], ['noul confidence ' + v, { n: { ...gNoul(), confidence: v } }], ['score confidence ' + v, { s: { ...gScore(), confidence: v } }]);
+  bad.push(['score expected_level string', { s: { ...gScore(), expected_level: '1.93' } }], ['score expected_level out of range', { s: { ...gScore(), expected_level: 9 } }],
+    ['score legend wrong length', { s: { ...gScore(), legend: ['none'] } }], ['score fractional index', { s: { ...gScore(), score: 1.5 } }], ['noul not a probability', { n: { ...gNoul(), noul: 1.2 } }]);
+  for (const [why, answers] of bad) assert.throws(() => gRun(answers), /malformed/, why);
+  const drift = route(gPolicy, 's', gRun({ s: { ...gScore(), expected_level: 0.2 } }), { now });
+  assert.ok(drift.reasons.includes('inconsistent'), 'GLiDE expected_level must match the probability-weighted mean');
+});
+
+test('TypeSafe raw schema: Noul needs no confidence and records it as derived; Choice and Score keep their required fields', () => {
+  const tReq = { model: 'jev-1.14.0', state: 's', questions: { n: { type: 'noul', instructions: 'x' }, c: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } },
+    s: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
+  const tAns = () => ({ n: { type: 'noul', noul: 0.97 }, c: gChoice(), s: { type: 'score', score: 1.93, confidence: 0.8, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } });
+  const recs = one(tReq, { model: 'jev-1.14.0', answers: tAns() }, 'typesafe');
+  const n = recs.find(r => r.question_id === 'n');
+  assert.deepEqual([n.confidence_source, Math.round(n.confidence * 100)], ['derived', 94]);
+  assert.equal(one(gReq, { answers: { c: gChoice(), n: gNoul(), s: gScore() } }).find(r => r.question_id === 'n').confidence_source, 'vendor');
+  for (const [why, patch] of [['choice -confidence', { c: without(gChoice(), 'confidence') }], ['score -legend', { s: without(tAns().s, 'legend') }],
+    ['score -confidence', { s: without(tAns().s, 'confidence') }], ['noul confidence out of range', { n: { type: 'noul', noul: 0.97, confidence: 2 } }]])
+    assert.throws(() => one(tReq, { answers: { ...tAns(), ...patch } }, 'typesafe'), /malformed/, why);
+  assert.throws(() => one({ ...tReq, questions: { ...tReq.questions, s: { ...tReq.questions.s, criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } }, { answers: tAns() }, 'typesafe'), /malformed/, 'TypeSafe Score criteria are an array');
+  const eleven = Array.from({ length: 11 }, (_, i) => 'l' + i);
+  assert.throws(() => one({ ...tReq, questions: { s: { type: 'score', instructions: 'x', criteria: eleven } } }, { answers: { s: { type: 'score', score: 0, confidence: 1, legend: eleven, probabilities: Object.fromEntries(eleven.map((_, i) => [String(i), i ? 0 : 1])) } } }, 'typesafe'), /malformed/, 'TypeSafe Score has at most 10 levels');
+  assert.throws(() => one(gReq, { answers: { c: gChoice(), n: gNoul(), s: gScore() } }, 'acme'), /malformed/, 'unknown systemone provider');
+});
+
+test('GLiDE Score criteria may be a numeric-key object: sorted and reindexed to 0..N-1', () => {
+  const req = { model: 'fastino/GLiDE', state: 's', questions: { s: { type: 'score', instructions: 'x', criteria: { '20': 'severe', '3': 'none', '10': 'minor' } } } };
+  const [r] = one(req, { answers: { s: gScore() } });
+  assert.deepEqual([r.options, r.selected], [['0', '1', '2'], '2']);
+  assert.throws(() => one({ ...req, questions: { s: { ...req.questions.s, criteria: { a: 'none', b: 'minor' } } } }, { answers: { s: gScore() } }), /malformed/, 'non-numeric Score keys');
 });

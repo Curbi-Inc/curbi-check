@@ -63,10 +63,52 @@ function binary(p, confidence) {
     confidence: isProb(confidence) ? confidence : Math.abs(2 * p - 1) };
 }
 
-// Shape 1: POST /v1/systemone (TypeSafe Jev, Fastino GLiDE). request = {model, state, questions:{id:{type, instructions, criteria}}}.
-// The host passes the per-question answers as response.answers; the response envelope is not yet confirmed (FIELDS.md).
+// Shape 1: POST /v1/systemone (TypeSafe Jev, Fastino GLiDE). request = {model, state, questions:{id:{type, instructions, criteria}}};
+// response.answers is an object keyed by the requested question IDs (confirmed from both vendors' pages, #43 6710842943).
+// Each raw answer is validated against its vendor's documented schema (Fastino and TypeSafe OpenAPI, per CTO review
+// 6710879991) before anything is normalized: required fields, types and domains. Unknown providers are refused.
+const SYSTEMONE_REQUIRED = {
+  fastino: { noul: ['type', 'noul', 'confidence'], choice: ['type', 'choice', 'confidence', 'probabilities'],
+    score: ['type', 'score', 'expected_level', 'confidence', 'probabilities', 'legend'] },
+  typesafe: { noul: ['type', 'noul'], choice: ['type', 'choice', 'confidence', 'probabilities'],
+    score: ['type', 'score', 'confidence', 'legend', 'probabilities'] }
+};
+const SCORE_LEVELS = { fastino: 255, typesafe: 10 };
+// Choice criteria are an object keyed by option for both vendors. Score criteria are an ordered array (both), or for
+// GLiDE also a numeric-key object, which is sorted and reindexed; either way the levels are "0".."N-1".
+function systemoneOptions(provider, id, q) {
+  if (q.type === 'noul') return ['true', 'false'];
+  const c = q.criteria;
+  if (q.type === 'choice') {
+    if (!isObj(c) || !Object.keys(c).length) throw new Malformed(`question ${id}: Choice criteria are an object keyed by option`);
+    return Object.keys(c);
+  }
+  let n;
+  if (Array.isArray(c)) n = c.length;
+  else if (provider === 'fastino' && isObj(c) && Object.keys(c).every(k => /^(0|[1-9][0-9]*)$/.test(k))) n = Object.keys(c).length;
+  else throw new Malformed(`question ${id}: Score criteria must be an ordered array${provider === 'fastino' ? ' or a numeric-key object' : ''}`);
+  if (n < 1 || n > SCORE_LEVELS[provider]) throw new Malformed(`question ${id}: Score takes 1 to ${SCORE_LEVELS[provider]} levels`);
+  return Array.from({ length: n }, (_, i) => String(i));
+}
+function checkSystemoneAnswer(provider, id, q, a, options) {
+  for (const k of SYSTEMONE_REQUIRED[provider][q.type]) if (!Object.hasOwn(a, k)) throw new Malformed(`question ${id}: ${provider} ${q.type} answer needs ${k}`);
+  if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
+  if (Object.hasOwn(a, 'confidence') && !isProb(a.confidence)) throw new Malformed(`question ${id}: confidence must be a number in [0,1]`);
+  if (q.type === 'noul' && !isProb(a.noul)) throw new Malformed(`question ${id}: noul must be a number in [0,1]`);
+  if (q.type === 'choice' && typeof a.choice !== 'string') throw new Malformed(`question ${id}: choice must be a string`);
+  if (q.type !== 'noul' && !isObj(a.probabilities)) throw new Malformed(`question ${id}: probabilities must be an object`);
+  if (q.type === 'score') {
+    const top = options.length - 1;
+    if (provider === 'fastino' && !(Number.isInteger(a.score) && a.score >= 0 && a.score <= top)) throw new Malformed(`question ${id}: GLiDE score is an integer level index`);
+    if (provider === 'typesafe' && !(typeof a.score === 'number' && Number.isFinite(a.score))) throw new Malformed(`question ${id}: TypeSafe score is a number`);
+    if (provider === 'fastino' && !(typeof a.expected_level === 'number' && a.expected_level >= 0 && a.expected_level <= top)) throw new Malformed(`question ${id}: expected_level must be a number in 0..${top}`);
+    const legendSize = Array.isArray(a.legend) ? a.legend.length : isObj(a.legend) ? Object.keys(a.legend).length : -1;
+    if (legendSize !== options.length) throw new Malformed(`question ${id}: legend must have one entry per level`);
+  }
+}
 export function normalizeSystemone({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
-  if (typeof provider !== 'string' || !isObj(request) || typeof request.model !== 'string' || !isObj(request.questions)) throw new Malformed('request needs model and questions');
+  if (!Object.hasOwn(SYSTEMONE_REQUIRED, provider)) throw new Malformed('systemone provider must be fastino or typesafe');
+  if (!isObj(request) || typeof request.model !== 'string' || !isObj(request.questions)) throw new Malformed('request needs model and questions');
   if (!isObj(response) || !isObj(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'systemone', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
     request_digest: digest(requestBytes ?? request), response_digest: digest(responseBytes ?? response), received_at: receivedAt ?? null };
@@ -76,30 +118,23 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
   return ids.map(id => {
     const q = request.questions[id], a = response.answers[id];
     if (!isObj(q) || !isObj(a)) throw new Malformed(`question ${id} has no answer`);
-    // Supported types only, and the answer's own discriminant must match its question before anything is coerced.
-    // TypeSafe answers carry `type` (primary Choice contract, per CTO review); GLiDE's may omit it, but if present it must match.
     if (!['noul', 'choice', 'score'].includes(q.type)) throw new Malformed(`question ${id} type ${q.type}`);
+    const options = systemoneOptions(provider, id, q);
     const common = { question_id: id, type: q.type, refused: false };
-    // Criteria: an object keyed by option, or an array. An array gives Choice its labels and Score its indexed levels.
-    const options = q.type === 'noul' ? ['true', 'false'] : Array.isArray(q.criteria) ? (q.type === 'score' ? q.criteria.map((_, i) => String(i)) : q.criteria.map(c => String(label(c))))
-      : isObj(q.criteria) ? Object.keys(q.criteria) : null;
-    if (a.type !== undefined || provider === 'typesafe') {
-      if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
-      if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
+    if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
+    checkSystemoneAnswer(provider, id, q, a, options);
+    if (q.type === 'noul') {
+      // Jev reports no Noul confidence; the adapter derives abs(2p - 1) and says so.
+      const b = binary(a.noul, a.confidence);
+      return record(base, { ...common, ...b, confidence_source: Object.hasOwn(a, 'confidence') ? 'vendor' : 'derived' });
     }
-    if (q.type === 'noul') return record(base, { ...common, ...binary(a.noul, a.confidence) });
     const probabilities = probs(a.probabilities);
-    if (!options?.length || !probabilities) throw new Malformed(`question ${id} needs criteria and probabilities`);
-    // A Score is an integer level index (GLiDE) or a fractional position (TypeSafe, per review). A fractional position
-    // never selects: the level comes from the probabilities, and the position is kept as score_position.
-    let selected, extra = {};
-    // GLiDE's score is an integer level index. TypeSafe's is a mean position, whole numbers included (per CTO re-review).
-    if (q.type === 'choice') selected = a.choice;
-    else if (provider === 'fastino') { if (Number.isInteger(a.score)) selected = String(a.score); }
-    else if (typeof a.score === 'number' && Number.isFinite(a.score)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
-    if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
-    return record(base, { ...common, options, probabilities, selected,
-      confidence: isProb(a.confidence) ? a.confidence : null, ...(q.type === 'score' ? { expected_level: typeof a.expected_level === 'number' ? a.expected_level : null, ...extra } : {}) });
+    if (q.type === 'choice') return record(base, { ...common, options, probabilities, selected: a.choice, confidence: a.confidence });
+    // GLiDE: score is the selected integer level; expected_level is the weighted mean and is checked like a position.
+    // TypeSafe: score is the weighted-mean position; the level comes from the probabilities.
+    if (provider === 'fastino') return record(base, { ...common, options, probabilities, selected: String(a.score), confidence: a.confidence,
+      expected_level: a.expected_level, score_position: a.expected_level });
+    return record(base, { ...common, options, probabilities, selected: argmax(probabilities), confidence: a.confidence, expected_level: null, score_position: a.score });
   });
 }
 
