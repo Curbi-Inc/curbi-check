@@ -29,7 +29,7 @@ const probs = o => isObj(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) 
 // OpenAI probabilities are an array of {value, probability}, validated at the provider boundary with no label fallback.
 // Choice: value is a declared string or boolean choice. Score: value is an integer level index, unique and in range; a
 // label, when present, must name that declared level.
-function openaiProbs(o, options, type) {
+function openaiProbs(o, options, type, raw) {
   if (o === undefined) return null;
   if (!Array.isArray(o)) throw new Malformed('probabilities: an array of {value, probability}');
   const out = {};
@@ -41,9 +41,10 @@ function openaiProbs(o, options, type) {
       if (e.label !== undefined && e.label !== options[e.value]) throw new Malformed('probabilities: label does not match its level index');
       k = options[e.value];
     } else {
-      if (typeof e.value !== 'string' && typeof e.value !== 'boolean') throw new Malformed('probabilities: choice value must be a string or boolean');
-      k = String(e.value);
-      if (!options.includes(k)) throw new Malformed('probabilities: value is not a declared choice');
+      // Exact membership by raw type: "true" is not the declared boolean true.
+      const at = raw.findIndex(c => c === e.value);
+      if ((typeof e.value !== 'string' && typeof e.value !== 'boolean') || at < 0) throw new Malformed('probabilities: value is not a declared choice');
+      k = options[at];
     }
     if (Object.hasOwn(out, k)) throw new Malformed('probabilities: each entry needs a distinct value');
     out[k] = e.probability;
@@ -75,12 +76,18 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
   return ids.map(id => {
     const q = request.questions[id], a = response.answers[id];
     if (!isObj(q) || !isObj(a)) throw new Malformed(`question ${id} has no answer`);
+    // Supported types only, and the answer's own discriminant must match its question before anything is coerced.
+    // TypeSafe answers carry `type` (primary Choice contract, per CTO review); GLiDE's may omit it, but if present it must match.
+    if (!['noul', 'choice', 'score'].includes(q.type)) throw new Malformed(`question ${id} type ${q.type}`);
     const common = { question_id: id, type: q.type, refused: false };
-    if (q.type === 'noul') return record(base, { ...common, ...binary(a.noul, a.confidence) });
-    if (q.type !== 'choice' && q.type !== 'score') throw new Malformed(`question ${id} type ${q.type}`);
     // Criteria: an object keyed by option, or an array. An array gives Choice its labels and Score its indexed levels.
-    const options = Array.isArray(q.criteria) ? (q.type === 'score' ? q.criteria.map((_, i) => String(i)) : q.criteria.map(c => String(label(c))))
+    const options = q.type === 'noul' ? ['true', 'false'] : Array.isArray(q.criteria) ? (q.type === 'score' ? q.criteria.map((_, i) => String(i)) : q.criteria.map(c => String(label(c))))
       : isObj(q.criteria) ? Object.keys(q.criteria) : null;
+    if (a.type !== undefined || provider === 'typesafe') {
+      if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
+      if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
+    }
+    if (q.type === 'noul') return record(base, { ...common, ...binary(a.noul, a.confidence) });
     const probabilities = probs(a.probabilities);
     if (!options?.length || !probabilities) throw new Malformed(`question ${id} needs criteria and probabilities`);
     // A Score is an integer level index (GLiDE) or a fractional position (TypeSafe, per review). A fractional position
@@ -112,7 +119,9 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     if (!isObj(a)) throw new Malformed('answer ' + i);
     const id = typeof q.name === 'string' ? q.name : String(i);
     if (typeof q.name === 'string' ? a.name !== q.name : a.name !== undefined) throw new Malformed(`answer ${i} does not match question ${id}`);
-    const options = q.type === 'predicate' ? ['true', 'false'] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => String(label(o)));
+    if (!['predicate', 'choice', 'score'].includes(q.type)) throw new Malformed(`question ${id} type ${q.type}`);
+    const raw = q.type === 'predicate' ? [true, false] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => isObj(o) ? label(o) : o);
+    const options = raw?.map(String);
     if (!Array.isArray(options) || !options.length) throw new Malformed(`question ${id} needs options`);
     const common = { question_id: id, type: q.type };
     if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
@@ -120,9 +129,13 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     if (q.type === 'predicate') return record(base, { ...common, refused: false, ...binary(a.probability, a.confidence) });
     // Every OpenAI Score is a numeric mean position, whole numbers included (per CTO re-reviews); it never selects:
     // the level comes from the probabilities and the position is kept as score_position. Choices may be booleans.
-    const probabilities = openaiProbs(a.probabilities, options, q.type);
+    const probabilities = openaiProbs(a.probabilities, options, q.type, raw);
     let selected, extra = {};
-    if (q.type === 'choice') { if (typeof a.choice === 'string' || typeof a.choice === 'boolean') selected = String(a.choice); }
+    if (q.type === 'choice') {
+      const at = raw.findIndex(c => c === a.choice);
+      if ((typeof a.choice !== 'string' && typeof a.choice !== 'boolean') || at < 0) throw new Malformed(`question ${id} choice is not a declared choice`);
+      selected = options[at];
+    }
     else if (typeof a.score === 'number' && Number.isFinite(a.score) && isObj(probabilities)) { selected = argmax(probabilities); extra = { score_position: a.score }; }
     if (typeof selected !== 'string') throw new Malformed(`question ${id} has no selected ${q.type}`);
     return record(base, { ...common, refused: false, options, probabilities, selected, confidence: isProb(a.confidence) ? a.confidence : null, ...extra });

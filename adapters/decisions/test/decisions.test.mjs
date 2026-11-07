@@ -77,10 +77,10 @@ test('a stale or missing calibration blocks act when the threshold gates an acti
 test('systemone noul: one probability becomes a two-option record; Jev gives no confidence so it is computed', () => {
   const p = compileDecisionPolicy({ decisions: { refund_eligible: { allowed: ['true', 'false'], act_at: 0.9, min_margin: 0.8, pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30, operations: { true: 'billing.refund' } } } });
   const req = { ...sysReq('noul'), model: 'jev-1.13.0' };
-  const recs = one(req, { answers: { refund_eligible: { noul: 0.97 } } }, 'typesafe');
+  const recs = one(req, { answers: { refund_eligible: { type: 'noul', noul: 0.97 } } }, 'typesafe');
   assert.deepEqual([recs[0].selected, recs[0].probabilities, Math.round(recs[0].confidence * 100)], ['true', { true: 0.97, false: 0.030000000000000027 }, 94]);
   assert.equal(route(p, 'refund_eligible', recs, { now }).outcome, 'act');
-  assert.throws(() => one(req, { answers: { refund_eligible: { noul: true } } }, 'typesafe'), /malformed/, 'not a boolean');
+  assert.throws(() => one(req, { answers: { refund_eligible: { type: 'noul', noul: true } } }, 'typesafe'), /malformed/, 'not a boolean');
 });
 
 test('systemone score: the integer level is selected; expected_level is kept but never selects', () => {
@@ -106,7 +106,7 @@ test('decisions shape: a refusal never acts, and a predicate maps to true/false'
 
 const consensusPolicy = compileDecisionPolicy({ decisions: { refund_eligible: { ...policy.decisions.refund_eligible,
   below: 'escalate', consensus: { models: ['fastino/GLiDE', 'jev-1.13.0'], require: 'all', max_divergence: 0.05 } } } });
-const jevAnswer = p => one({ ...sysReq(), model: 'jev-1.13.0' }, glide(p), 'typesafe');
+const jevAnswer = p => { const g = glide(p); return one({ ...sysReq(), model: 'jev-1.13.0' }, { ...g, answers: { refund_eligible: { type: 'choice', ...g.answers.refund_eligible } } }, 'typesafe'); };
 test('consensus: agreement acts; disagreement or divergence hands off; a missing model escalates to it', () => {
   const g = one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 }));
   assert.deepEqual(route(consensusPolicy, 'refund_eligible', g, { now }), { outcome: 'escalate', selected: 'eligible', reasons: ['consensus_incomplete'], next_model: 'jev-1.13.0' });
@@ -194,7 +194,7 @@ test('systemone shape: array criteria give string options for Choice and indexed
 // probabilities; the fractional value is kept, never used to select.
 test('systemone shape: a fractional score selects the top-probability level and keeps the position', () => {
   const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } };
-  const [s] = one(sreq, { answers: { sev: { score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
+  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 } } } }, 'typesafe');
   assert.deepEqual([s.selected, s.score_position], ['2', 1.84]);
 });
 
@@ -203,7 +203,7 @@ test('systemone shape: a fractional score selects the top-probability level and 
 const sevPolicy = compileDecisionPolicy({ decisions: { sev: { allowed: ['0', '1', '2'], act_at: 0.9, min_margin: 0.5,
   pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30 } } });
 const tsScore = score => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
-  { answers: { sev: { score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } }, 'typesafe');
+  { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 } } } }, 'typesafe');
 test('TypeSafe fractional score: out of range or inconsistent with the probabilities never acts; the documented mean acts', () => {
   for (const bad of [999.5, -1.5, 0.93]) {
     const out = route(sevPolicy, 'sev', tsScore(bad), { now });
@@ -233,7 +233,7 @@ test('decisions shape: the documented numeric Score response normalizes, keeps i
 // GLiDE keeps its separate integer level-index contract.
 test('whole-number scores are positions for TypeSafe and OpenAI: checked against the mean; GLiDE indices still select', () => {
   const ts = (score, probabilities) => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: { '0': 'none', '1': 'minor', '2': 'severe' } } } },
-    { answers: { sev: { score, confidence: 0.9, probabilities } } }, 'typesafe');
+    { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities } } }, 'typesafe');
   const bad = route(sevPolicy, 'sev', ts(0, { '0': 0.95, '1': 0, '2': 0.05 }), { now });
   assert.notEqual(bad.outcome, 'act'); assert.ok(bad.reasons.includes('inconsistent'), JSON.stringify(bad));
   const goodPolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, act_at: 0.85 } } });
@@ -296,4 +296,37 @@ test('decisions shape: malformed OpenAI wire types are refused; valid numeric me
     probabilities: [{ value: true, probability: 0.96 }, { value: false, probability: 0.04 }] }] }, receivedAt: at });
   assert.deepEqual([b.options, b.selected, b.probabilities], [['true', 'false'], 'true', { true: 0.96, false: 0.04 }]);
   assert.throws(() => oaq([{ ...allowAnswer, probabilities: [{ value: null, label: 'allow', probability: 0.95 }, { value: 'deny', probability: 0.05 }] }]), /malformed/, 'choice null value');
+});
+
+// CTO review 6710693985: validate raw discriminants and literal identity before any coercion.
+const tsChoiceReq = { model: 'jev-1.13.0', state: 's', questions: { q: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } } } };
+const tsPolicy = compileDecisionPolicy({ decisions: { q: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }] } } });
+test('systemone answer discriminant: a mismatched type is malformed, a refusal never acts, a matching type acts', () => {
+  const ans = type => one(tsChoiceReq, { answers: { q: { ...(type ? { type } : {}), choice: 'allow', probabilities: { allow: 0.95, deny: 0.05 } } } }, 'typesafe');
+  assert.throws(() => ans('score'), /malformed/, 'score answer to a choice question');
+  assert.throws(() => ans(undefined), /malformed/, 'TypeSafe answers carry their type');
+  const refused = route(tsPolicy, 'q', ans('refusal'), { now });
+  assert.deepEqual([refused.outcome, refused.reasons], ['hand_off', ['refused']]);
+  assert.equal(route(tsPolicy, 'q', ans('choice'), { now }).outcome, 'act', 'control');
+  assert.equal(route(policy, 'refund_eligible', one(sysReq(), glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 })), { now }).outcome, 'act', 'GLiDE without a type field still acts');
+});
+
+test('decisions shape: choice membership is exact by raw type; "true" is not the declared boolean true', () => {
+  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [true, false] }] };
+  const bp = compileDecisionPolicy({ decisions: { b: { allowed: ['true', 'false'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'openai', model: 'gpt-6-luna' }] } } });
+  const run = (choice, v1, v2) => normalizeDecisions({ provider: 'openai', request: breq, response: { answers: [{ type: 'choice', name: 'b', choice, confidence: 0.9,
+    probabilities: [{ value: v1, probability: 0.95 }, { value: v2, probability: 0.05 }] }] }, receivedAt: at });
+  assert.throws(() => run('true', 'true', 'false'), /malformed/, 'string values for boolean choices');
+  assert.throws(() => run('true', true, false), /malformed/, 'string choice for a boolean declaration');
+  assert.equal(route(bp, 'b', run(true, true, false), { now }).outcome, 'act', 'exact booleans act');
+  const sreq = { ...breq, questions: [{ ...breq.questions[0], choices: ['true', 'false'] }] };
+  assert.throws(() => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'choice', name: 'b', choice: true, confidence: 0.9,
+    probabilities: [{ value: true, probability: 0.95 }, { value: false, probability: 0.05 }] }] }, receivedAt: at }), /malformed/, 'booleans for string declarations');
+});
+
+test('decisions shape: only predicate, choice and score are supported; any other type is malformed', () => {
+  const ureq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'unsupported', name: 'u', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
+  assert.throws(() => normalizeDecisions({ provider: 'openai', request: ureq, response: { answers: [{ type: 'unsupported', name: 'u', score: 1.93,
+    probabilities: [{ value: 'none', probability: 0.02 }, { value: 'minor', probability: 0.03 }, { value: 'severe', probability: 0.95 }] }] }, receivedAt: at }), /malformed/);
+  assert.throws(() => one({ model: 'jev-1.13.0', state: 's', questions: { u: { type: 'box', instructions: 'x', criteria: { a: 'a' } } } }, { answers: { u: { type: 'box', choice: 'a', probabilities: { a: 1 } } } }, 'typesafe'), /malformed/);
 });

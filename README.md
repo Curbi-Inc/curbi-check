@@ -9,7 +9,7 @@ npm ci --ignore-scripts
 npm test
 ```
 
-Node 22+. Local deterministic checker, six read-only MCP tools, AI SDK/LangChain/LiveKit adapters, stream checking and an offline proof verifier. MIT. No model calls or private checkout required. The root suite runs 362 synthetic tests. A decision-model adapter in [adapters/decisions](adapters/decisions/README.md) checks typed model answers against policy. Framework tests use synthetic models; this is not a model-quality score.
+Node 22+. Local deterministic checker, six read-only MCP tools, AI SDK/LangChain/LiveKit adapters, stream checking and an offline proof verifier. MIT. No model calls or private checkout required. The root suite runs 365 synthetic tests. A decision-model adapter in [adapters/decisions](adapters/decisions/README.md) checks typed model answers against policy. Framework tests use synthetic models; this is not a model-quality score.
 
 ```js
 const {runCheck}=require('./checker/check-api.js');
