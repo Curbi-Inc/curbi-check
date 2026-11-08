@@ -4,9 +4,11 @@
   "files": [
     {
       "publicPath": "checker/check-api.js",
-      "sourceSha256": "5f428b71197e5968f9f0c5902aa39dedf5c2e89119d0a44ab20c66a931f6bfcc",
-      "publicSha256": "cf620a6b505fd57ebd784a23cb660378c817715cbe364ca3717f9a0dd8088ca8",
-      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
+      "sourceSha256": "8d554c71843ab5aa18f04c7302b8dd063de742cee1743d1aaa3e1c167c87c861",
+      "publicSha256": "5497f59138cd215b19238bbfbe2d12e15dc163b2db75c685cb1f2472df736360",
+      "transform": "Unmodified production checker bytes with MIT attribution header; relative receipts import unchanged",
+      "sourceCommit": "27cfc9cb68a2ff37a885ddb8b26c48ba6460047d",
+      "sourcePath": "revenue-engine/claimcheck-web-v14/v15/check-api.js"
     },
     {
       "publicPath": "checker/receipts.js",
@@ -47,8 +49,8 @@
     {
       "publicPath": "test/behavior/amounts.test.mjs",
       "sourceSha256": "4956c326d232131cb450fd95e16d3e71c727bdec8b6a8bc3f603f926e9b8a238",
-      "publicSha256": "d4e16159852b074eeed457771a370a88d84b1ef5b5724e5e19ffd26eb6f215e5",
-      "transform": "MIT header, declared relative-import relocation, package license only; first-party attribution comment cleanup"
+      "publicSha256": "eed12b39db31144a04c1efcb8c663ec2356f485560d4b2ab78372893baf8fdbc",
+      "transform": "Reviewed production-discount parity regression; AI policy examples keep all documented misses; stale export-lag allowance removed"
     },
     {
       "publicPath": "test/behavior/overlap.test.mjs",
@@ -232,9 +234,11 @@
     },
     {
       "publicPath": "schemas/policy.v1.schema.json",
-      "sourceSha256": "4b845b58acd1be933a9367d75d1d6b6e10cdbc69465968a8a6095e4eb0ee266c",
-      "publicSha256": "4b845b58acd1be933a9367d75d1d6b6e10cdbc69465968a8a6095e4eb0ee266c",
-      "transform": "MIT header, declared relative-import relocation, package license only"
+      "sourceSha256": "5a3c42a46839d38eefed7709b9f5a040843d23b28e1dd0265fd8281aa854c156",
+      "publicSha256": "5a3c42a46839d38eefed7709b9f5a040843d23b28e1dd0265fd8281aa854c156",
+      "transform": "Unmodified current production policy schema",
+      "sourceCommit": "27cfc9cb68a2ff37a885ddb8b26c48ba6460047d",
+      "sourcePath": "revenue-engine/claimcheck-web-v14/contract/policy.v1.schema.json"
     },
     {
       "publicPath": "test/fixtures/corpus.v1.json",
@@ -366,6 +370,21 @@
       "publicPath": "packages/vercel/test/types.ts",
       "publicSha256": "8c7ec66e5ba6fe8fbdb2fa6e321564f1788485712722e321791d6b9712e9e5ee",
       "transform": "New MIT framework integration and tests; self-contained registry package"
+    },
+    {
+      "publicPath": "test/behavior/discount-parity.test.mjs",
+      "publicSha256": "227b9a72bbb45f956a8ed01e1b9a856d9e13869bb99e746a8fd68a1cb2d78b27",
+      "transform": "Reviewed production-discount parity regression; AI policy examples keep all documented misses; stale export-lag allowance removed"
+    },
+    {
+      "publicPath": "test/policies/policies.test.mjs",
+      "publicSha256": "84143dfc772d65208f956698ee0b25796491933cad3942e3e75a40a19e391b32",
+      "transform": "Reviewed production-discount parity regression; AI policy examples keep all documented misses; stale export-lag allowance removed"
+    },
+    {
+      "publicPath": "test/policies/ai-agent-verification.json",
+      "publicSha256": "0031f5cf6691ccbeb5df4c1b9f1b82a421c94fc0be21c31904b521ec46da64fa",
+      "transform": "Reviewed production-discount parity regression; AI policy examples keep all documented misses; stale export-lag allowance removed"
     }
   ]
 }
