@@ -15,6 +15,9 @@ const DAY = 86_400_000;
 class Malformed extends Error { constructor(msg) { super('malformed: ' + msg); this.code = 'malformed'; } }
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isProb = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+// Every caller input is copied to plain data once, before validation, and only the copy is read: a getter or proxy
+// can't return one value to a check and another to the code that uses it. Inputs that aren't plain data are refused.
+const snapshot = (v, fail) => { try { return structuredClone(v); } catch { throw fail(); } };
 
 export function canonical(v) {
   if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
@@ -51,7 +54,30 @@ function openaiProbs(o, options, type, raw) {
   }
   return out;
 }
+// systemone rubric levels only (legend check); OpenAI declarations use declaredOptions, with no fallback.
 const label = o => isObj(o) ? o.label ?? o.name ?? o.value ?? o.key : o;
+// OpenAI question declarations, per the pinned SDK (openai-node 47bade0 src/resources/decisions.ts): a Choice is
+// {value: string | boolean, description?}, 2 to 255 of them, each unique; a Score level is {label: string, description?},
+// 2 to 10 of them (guide). Each type reads only its own required field: a label or name on a Choice, or a value or name
+// on a level, is an unknown field, so nothing else can stand in for the discriminant. Values whose string forms collide
+// ("true" and true) are refused because the record keys options by string (CTO re-review 6717768775).
+const DECLARED = { choice: { list: 'choices', key: 'value', min: 2, max: 255 }, score: { list: 'levels', key: 'label', min: 2, max: 10 } };
+function declaredOptions(q, id) {
+  if (q.type === 'predicate') return { raw: [true, false], options: ['true', 'false'] };
+  const d = DECLARED[q.type], list = q[d.list], bad = m => { throw new Malformed(`question ${id}: ${m}`); };
+  if (!Array.isArray(list) || list.length < d.min || list.length > d.max) bad(`${d.list}: an array of ${d.min} to ${d.max}`);
+  const raw = list.map((o, i) => {
+    if (!isObj(o) || !Object.hasOwn(o, d.key)) bad(`${d.list}[${i}] needs ${d.key}`);
+    for (const k of Object.keys(o)) if (k !== d.key && k !== 'description') bad(`${d.list}[${i}]: unknown field ${k}`);
+    if (Object.hasOwn(o, 'description') && typeof o.description !== 'string') bad(`${d.list}[${i}].description: string`);
+    const v = o[d.key];
+    if (q.type === 'choice' ? !(typeof v === 'string' || typeof v === 'boolean') : typeof v !== 'string') bad(`${d.list}[${i}].${d.key}: ${q.type === 'choice' ? 'string or boolean' : 'string'}`);
+    return v;
+  });
+  const options = raw.map(String);
+  if (new Set(options).size !== options.length) bad(`${d.list}: each ${d.key} must be distinct`);
+  return { raw, options };
+}
 const argmax = p => Object.keys(p).reduce((a, k) => (a === null || p[k] > p[a] ? k : a), null);
 
 function record(base, fields) {
@@ -112,6 +138,7 @@ function checkSystemoneAnswer(provider, id, q, a, options) {
   }
 }
 export function normalizeSystemone({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
+  request = snapshot(request, () => new Malformed('request: plain data only')); response = snapshot(response, () => new Malformed('response: plain data only'));
   if (!Object.hasOwn(SYSTEMONE_REQUIRED, provider)) throw new Malformed('systemone provider must be fastino or typesafe');
   if (!isObj(request) || typeof request.model !== 'string' || !isObj(request.questions)) throw new Malformed('request needs model and questions');
   if (!isObj(response) || !isObj(response.answers)) throw new Malformed('response needs answers');
@@ -146,6 +173,7 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
 // Shape 2: POST /v1/decisions (OpenAI, gpt-6-luna). request = {model, input, questions:[{type, name, instructions, choices|levels}]},
 // response.answers = [{type, name, probability | choice, confidence[, probabilities] | ...}]; type "refusal" never acts.
 export function normalizeDecisions({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
+  request = snapshot(request, () => new Malformed('request: plain data only')); response = snapshot(response, () => new Malformed('response: plain data only'));
   if (typeof provider !== 'string' || !isObj(request) || typeof request.model !== 'string' || !Array.isArray(request.questions)) throw new Malformed('request needs model and questions');
   if (!isObj(response) || !Array.isArray(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'decisions', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
@@ -160,9 +188,8 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     const id = typeof q.name === 'string' ? q.name : String(i);
     if (typeof q.name === 'string' ? a.name !== q.name : !(a.name === undefined || a.name === null)) throw new Malformed(`answer ${i} does not match question ${id}`);
     if (!['predicate', 'choice', 'score'].includes(q.type)) throw new Malformed(`question ${id} type ${q.type}`);
-    const raw = q.type === 'predicate' ? [true, false] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => isObj(o) ? label(o) : o);
-    const options = raw?.map(String);
-    if (!Array.isArray(options) || !options.length) throw new Malformed(`question ${id} needs options`);
+    // Declarations are validated before any answer is read, refusals included.
+    const { raw, options } = declaredOptions(q, id);
     const common = { question_id: id, type: q.type };
     if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
     if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
@@ -187,12 +214,19 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
 const BELOW = ['hand_off', 'escalate', 'deny'];
 const QKEYS = ['allowed', 'act_at', 'min_margin', 'pin', 'consensus', 'below', 'calibration', 'max_calibration_age_days', 'require_calibration', 'operations'];
 export function compileDecisionPolicy(p) {
+  p = snapshot(p, () => new Error('policy: plain data only'));
   if (!isObj(p) || !isObj(p.decisions)) throw new Error('policy.decisions: object');
   const out = {};
   for (const [id, q] of Object.entries(p.decisions)) {
     const bad = m => { throw new Error(`policy.decisions.${id}: ${m}`); };
     if (!isObj(q)) bad('object');
     for (const k of Object.keys(q)) if (!QKEYS.includes(k)) bad('unknown field ' + k);
+    // JavaScript callers can pass a present undefined, which the spread below would copy over a safe default
+    // (CTO re-review 6717768775). Refuse it here, and in the nested objects, instead of guessing intent: omit the field.
+    const noUndefined = (o, path) => { for (const [k, v] of Object.entries(o)) if (v === undefined) bad(`${path}${k}: present but undefined; omit it to use the default`); };
+    noUndefined(q, '');
+    for (const k of ['consensus', 'calibration']) if (isObj(q[k])) noUndefined(q[k], k + '.');
+    if (Array.isArray(q.pin)) q.pin.forEach((x, i) => isObj(x) && noUndefined(x, `pin[${i}].`));
     if (!Array.isArray(q.allowed) || !q.allowed.length || !q.allowed.every(s => typeof s === 'string')) bad('allowed: non-empty list of options');
     if (!(typeof q.act_at === 'number' && q.act_at > 0 && q.act_at <= 1)) bad('act_at: number in (0,1]');
     if (q.min_margin !== undefined && !isProb(q.min_margin)) bad('min_margin: number in [0,1]');

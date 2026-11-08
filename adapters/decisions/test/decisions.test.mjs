@@ -89,7 +89,7 @@ test('systemone score: the integer level is selected; expected_level is kept but
   assert.deepEqual([r.type, r.selected, r.expected_level], ['score', '2', 1.9]);
 });
 
-const oaReq = { model: 'gpt-6-luna', input: 'Order arrived broken', questions: [{ type: 'choice', name: 'refund_eligible', instructions: 'Is a refund allowed?', choices: ['eligible', 'ineligible', 'unclear'] }] };
+const oaReq = { model: 'gpt-6-luna', input: 'Order arrived broken', questions: [{ type: 'choice', name: 'refund_eligible', instructions: 'Is a refund allowed?', choices: [{ value: 'eligible' }, { value: 'ineligible' }, { value: 'unclear' }] }] };
 test('decisions shape: a choice with per-option probabilities acts; without them the margin is unavailable and it hands off', () => {
   const withP = normalizeDecisions({ provider: 'openai', request: oaReq, response: { model: 'gpt-6-luna', answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', confidence: 0.95, probabilities: [{ value: 'eligible', probability: 0.97 }, { value: 'ineligible', probability: 0.02 }, { value: 'unclear', probability: 0.01 }] }] }, receivedAt: at });
   assert.equal(route(policy, 'refund_eligible', withP, { now }).outcome, 'act');
@@ -262,7 +262,7 @@ test('OpenAI numeric value plus label: duplicate, out-of-range or swapped indice
 
 // CTO re-review 6709502686, P1: answers must correspond one to one, in order, with the requested questions. A duplicate,
 // extra, missing or mismatched answer is malformed, so a later answer can never erase a refusal or a conflicting decision.
-const qReq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'q', instructions: 'x', choices: ['allow', 'deny'] }] };
+const qReq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'q', instructions: 'x', choices: [{ value: 'allow' }, { value: 'deny' }] }] };
 const allowAnswer = { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: [{ value: 'allow', probability: 0.95 }, { value: 'deny', probability: 0.05 }] };
 const denyAnswer = { type: 'choice', name: 'q', choice: 'deny', confidence: 0.9, probabilities: [{ value: 'allow', probability: 0.05 }, { value: 'deny', probability: 0.95 }] };
 const qPolicy = compileDecisionPolicy({ decisions: { q: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'openai', model: 'gpt-6-luna' }] } } });
@@ -272,7 +272,7 @@ test('decisions shape: duplicate, extra, missing or mismatched answers are malfo
   for (const [why, answers] of [['refusal then allow', [{ type: 'refusal', name: 'q' }, allowAnswer]], ['deny then allow', [denyAnswer, allowAnswer]],
     ['extra answer', [allowAnswer, { ...allowAnswer, name: 'other' }]], ['missing answer', []], ['wrong name', [{ ...allowAnswer, name: 'r' }]]])
     assert.throws(() => oaq(answers), /malformed/, why);
-  const unnamed = { ...qReq, questions: [{ type: 'choice', instructions: 'x', choices: ['allow', 'deny'] }, { type: 'choice', instructions: 'y', choices: ['allow', 'deny'] }] };
+  const unnamed = { ...qReq, questions: [{ type: 'choice', instructions: 'x', choices: [{ value: 'allow' }, { value: 'deny' }] }, { type: 'choice', instructions: 'y', choices: [{ value: 'allow' }, { value: 'deny' }] }] };
   const { name: _n, ...anon } = allowAnswer;
   assert.equal(normalizeDecisions({ provider: 'openai', request: unnamed, response: { answers: [anon, anon] }, receivedAt: at }).length, 2, 'unnamed questions match by position');
   assert.throws(() => normalizeDecisions({ provider: 'openai', request: unnamed, response: { answers: [anon, allowAnswer] }, receivedAt: at }), /malformed/, 'a named answer for an unnamed question');
@@ -289,7 +289,7 @@ test('decisions shape: malformed OpenAI wire types are refused; valid numeric me
   assert.throws(sc(1.93, items(() => null)), /malformed/, 'null value');
   assert.throws(sc(1.93, items(() => ({ invalid: true }))), /malformed/, 'object value');
   assert.doesNotThrow(sc(1.93, items(i => i)), 'valid numeric mean');
-  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [true, false] }] };
+  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [{ value: true }, { value: false }] }] };
   const [b] = normalizeDecisions({ provider: 'openai', request: breq, response: { answers: [{ type: 'choice', name: 'b', choice: true, confidence: 0.9,
     probabilities: [{ value: true, probability: 0.96 }, { value: false, probability: 0.04 }] }] }, receivedAt: at });
   assert.deepEqual([b.options, b.selected, b.probabilities], [['true', 'false'], 'true', { true: 0.96, false: 0.04 }]);
@@ -311,14 +311,14 @@ test('systemone answer discriminant: a mismatched type is malformed, a refusal n
 });
 
 test('decisions shape: choice membership is exact by raw type; "true" is not the declared boolean true', () => {
-  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [true, false] }] };
+  const breq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'b', instructions: 'x', choices: [{ value: true }, { value: false }] }] };
   const bp = compileDecisionPolicy({ decisions: { b: { allowed: ['true', 'false'], act_at: 0.9, min_margin: 0.5, pin: [{ provider: 'openai', model: 'gpt-6-luna' }] } } });
   const run = (choice, v1, v2) => normalizeDecisions({ provider: 'openai', request: breq, response: { answers: [{ type: 'choice', name: 'b', choice, confidence: 0.9,
     probabilities: [{ value: v1, probability: 0.95 }, { value: v2, probability: 0.05 }] }] }, receivedAt: at });
   assert.throws(() => run('true', 'true', 'false'), /malformed/, 'string values for boolean choices');
   assert.throws(() => run('true', true, false), /malformed/, 'string choice for a boolean declaration');
   assert.equal(route(bp, 'b', run(true, true, false), { now }).outcome, 'act', 'exact booleans act');
-  const sreq = { ...breq, questions: [{ ...breq.questions[0], choices: ['true', 'false'] }] };
+  const sreq = { ...breq, questions: [{ ...breq.questions[0], choices: [{ value: 'true' }, { value: 'false' }] }] };
   assert.throws(() => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'choice', name: 'b', choice: true, confidence: 0.9,
     probabilities: [{ value: true, probability: 0.95 }, { value: false, probability: 0.05 }] }] }, receivedAt: at }), /malformed/, 'booleans for string declarations');
 });
@@ -414,4 +414,114 @@ test('OpenAI raw contract: choice and score need a confidence in [0,1]; score pr
 test('policy booleans: require_calibration must be a boolean', () => {
   for (const v of [0, 1, 'false', null]) assert.throws(() => compileDecisionPolicy({ decisions: { q: { allowed: ['a'], act_at: 0.9, require_calibration: v } } }), /policy\.decisions\.q/, String(v));
   assert.doesNotThrow(() => compileDecisionPolicy({ decisions: { q: { allowed: ['a'], act_at: 0.9, require_calibration: false } } }));
+});
+
+// CTO re-review 6717768775 of 8cd28d7: two act paths. Each test below failed on 8cd28d7 before the fix.
+const oaRun = (q, a, p, key) => route(p, key, normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'synthetic', questions: [q] },
+  response: { model: 'gpt-6-luna', answers: [a] }, receivedAt: at }), { now });
+const allowPolicy = compileDecisionPolicy({ decisions: { q: { allowed: ['allow'], act_at: 0.8, min_margin: 0 } } });
+const twoProbs = (a, b) => [{ value: a, probability: 0.95 }, { value: b, probability: 0.05 }];
+
+test('P1a OpenAI Choice: the discriminant is the required literal value; a conflicting label or name never changes its meaning', () => {
+  // The CTO's exact reproduction: declared values are deny/reject; "allow" exists only as a label.
+  const conflict = { type: 'choice', name: 'q', instructions: 'x', choices: [{ value: 'deny', label: 'allow' }, { value: 'reject', label: 'deny' }] };
+  assert.throws(() => oaRun(conflict, { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }, allowPolicy, 'q'), /malformed/, 'CTO reproduction');
+  // The same values without the stray labels: "allow" is still not declared, so it can't act either.
+  const plain = { ...conflict, choices: [{ value: 'deny' }, { value: 'reject' }] };
+  assert.throws(() => oaRun(plain, { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }, allowPolicy, 'q'), /malformed/, 'undeclared value');
+  for (const [why, choice] of [['label only', { label: 'allow' }], ['name only', { name: 'allow' }], ['key only', { key: 'allow' }], ['value null', { value: null, label: 'allow' }],
+    ['value number', { value: 1 }], ['bare string', 'allow'], ['bare boolean', true]]) {
+    const q = { ...conflict, choices: [choice, { value: 'deny' }] };
+    assert.throws(() => oaRun(q, { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }, allowPolicy, 'q'), /malformed/, why);
+  }
+  // Declarations are rejected before routing: duplicates, typed collisions this record format can't keep apart, wrong counts.
+  for (const [why, choices] of [['duplicate value', [{ value: 'allow' }, { value: 'allow' }]], ['"true" and true', [{ value: 'true' }, { value: true }]],
+    ['one choice', [{ value: 'allow' }]], ['256 choices', Array.from({ length: 256 }, (_, i) => ({ value: 'c' + i }))], ['not an array', { allow: {} }]])
+    assert.throws(() => oaRun({ ...conflict, choices }, { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }, allowPolicy, 'q'), /malformed/, why);
+  // Correct typed controls act; description is allowed.
+  const good = { ...conflict, choices: [{ value: 'allow', description: 'policy allows' }, { value: 'deny' }] };
+  assert.equal(oaRun(good, { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }, allowPolicy, 'q').outcome, 'act', 'string control');
+  const bp = compileDecisionPolicy({ decisions: { q: { allowed: ['true'], act_at: 0.8, min_margin: 0 } } });
+  assert.equal(oaRun({ ...conflict, choices: [{ value: true }, { value: false }] }, { type: 'choice', name: 'q', choice: true, confidence: 0.9, probabilities: twoProbs(true, false) }, bp, 'q').outcome, 'act', 'boolean control');
+});
+
+test('P1a OpenAI Score: levels are matched by their own required label; a value, name or missing label is malformed', () => {
+  const sp = compileDecisionPolicy({ decisions: { sev: { allowed: ['severe'], act_at: 0.9, min_margin: 0 } } });
+  const run = levels => oaRun({ type: 'score', name: 'sev', instructions: 'x', levels }, { type: 'score', name: 'sev', score: 1.93, confidence: 0.9,
+    probabilities: [0, 1, 2].map(i => ({ value: i, label: ['none', 'minor', 'severe'][i], probability: [0.02, 0.03, 0.95][i] })) }, sp, 'sev');
+  assert.equal(run([{ label: 'none' }, { label: 'minor', description: 'd' }, { label: 'severe' }]).outcome, 'act', 'control');
+  for (const [why, levels] of [['name instead of label', [{ label: 'none' }, { label: 'minor' }, { name: 'severe' }]], ['value instead of label', [{ label: 'none' }, { label: 'minor' }, { value: 'severe' }]],
+    ['stray value beside label', [{ label: 'none' }, { label: 'minor' }, { label: 'severe', value: 'none' }]], ['non-string label', [{ label: 'none' }, { label: 'minor' }, { label: 2 }]],
+    ['bare string', ['none', 'minor', 'severe']], ['duplicate label', [{ label: 'none' }, { label: 'severe' }, { label: 'severe' }]], ['one level', [{ label: 'severe' }]],
+    ['11 levels', Array.from({ length: 11 }, (_, i) => ({ label: 'l' + i }))]])
+    assert.throws(() => run(levels), /malformed/, why);
+});
+
+test('P1b policy: an explicitly undefined field is refused; omitted fields keep their safe defaults', () => {
+  const base = { allowed: ['allow'], act_at: 0.8, operations: { allow: 'billing.refund' } };
+  // The CTO's exact reproductions.
+  assert.throws(() => compileDecisionPolicy({ decisions: { q: { ...base, require_calibration: undefined } } }), /policy\.decisions\.q: require_calibration/, 'require_calibration: undefined');
+  const stale = { dataset: 'd', accuracy_at_threshold: 0.99, measured_at: '2020-01-01T00:00:00Z' };
+  assert.throws(() => compileDecisionPolicy({ decisions: { q: { ...base, calibration: stale, max_calibration_age_days: undefined } } }), /policy\.decisions\.q: max_calibration_age_days/, 'max_calibration_age_days: undefined');
+  // Every policy field, and the nested consensus and calibration objects, refuse a present undefined.
+  for (const k of ['allowed', 'act_at', 'min_margin', 'pin', 'consensus', 'below', 'calibration', 'max_calibration_age_days', 'require_calibration', 'operations'])
+    assert.throws(() => compileDecisionPolicy({ decisions: { q: { ...base, [k]: undefined } } }), /policy\.decisions\.q/, k);
+  assert.throws(() => compileDecisionPolicy({ decisions: { q: { ...base, consensus: { models: ['m'], require: 'all', max_divergence: 0.1, extra: undefined } } } }), /policy\.decisions\.q/, 'consensus field');
+  assert.throws(() => compileDecisionPolicy({ decisions: { q: { ...base, calibration: { ...stale, measured_at: '2026-11-01T00:00:00Z', note: undefined } } } }), /policy\.decisions\.q/, 'calibration field');
+  // Omitted: the safe defaults still apply.
+  const confident = normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'q', instructions: 'x', choices: [{ value: 'allow' }, { value: 'deny' }] }] },
+    response: { answers: [{ type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }] }, receivedAt: at });
+  assert.deepEqual(route(compileDecisionPolicy({ decisions: { q: base } }), 'q', confident, { now }).reasons, ['calibration_missing'], 'omitted require_calibration');
+  assert.deepEqual(route(compileDecisionPolicy({ decisions: { q: { ...base, calibration: stale } } }), 'q', confident, { now }).reasons, ['calibration_stale'], 'omitted max_calibration_age_days');
+  assert.equal(route(compileDecisionPolicy({ decisions: { q: { ...base, calibration: { ...stale, measured_at: '2026-11-01T00:00:00Z' } } } }), 'q', confident, { now }).outcome, 'act', 'fresh control');
+});
+
+// Curbi-env corrections C1–C6 (#43 6710842943), reproduced on the vendors' own documented examples (loaded 2026-11-07).
+test('C1–C6: the vendors’ documented example responses normalize as documented', () => {
+  // C1 + C2 + C3: OpenAI's guide choice and score examples.
+  const oc = normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'I was charged twice for my order.', questions: [{ type: 'choice', name: 'department', instructions: 'x',
+    choices: [{ value: 'billing', description: 'a' }, { value: 'technical', description: 'b' }, { value: 'shipping', description: 'c' }, { value: 'other', description: 'd' }] }] },
+    response: { answers: [{ type: 'choice', name: 'department', choice: 'billing', probabilities: [{ value: 'billing', probability: 0.95 }, { value: 'technical', probability: 0.02 }, { value: 'shipping', probability: 0.01 }, { value: 'other', probability: 0.02 }], confidence: 0.93 }] } })[0];
+  assert.deepEqual([oc.selected, oc.probabilities], ['billing', { billing: 0.95, technical: 0.02, shipping: 0.01, other: 0.02 }], 'C1: array probabilities are read, not margin_unavailable');
+  const os = normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'Export fails in Safari but works in Chrome.', questions: [{ type: 'score', name: 'severity', instructions: 'x',
+    levels: [{ label: 'Cosmetic', description: 'a' }, { label: 'Workaround available', description: 'b' }, { label: 'Fully blocked', description: 'c' }] }] },
+    response: { answers: [{ type: 'score', name: 'severity', score: 1.1, probabilities: [{ value: 0, label: 'Cosmetic', probability: 0.1 }, { value: 1, label: 'Workaround available', probability: 0.7 }, { value: 2, label: 'Fully blocked', probability: 0.2 }], confidence: 0.55 }] } })[0];
+  assert.deepEqual(os.options, ['Cosmetic', 'Workaround available', 'Fully blocked'], 'C2: options are the labels, not "undefined"');
+  assert.deepEqual([os.selected, os.score_position], ['Workaround available', 1.1], 'C3: the level is the argmax; the decimal score is a position');
+  // C4: Fastino's documented multi-question request, Score criteria as an ordered array.
+  const g = normalizeSystemone({ provider: 'fastino', request: { model: 'fastino/GLiDE', state: 'Refund request', questions: {
+    department: { type: 'choice', instructions: 'x', criteria: { billing: 'a', returns: 'b', shipping: 'c' } },
+    urgency: { type: 'score', instructions: 'x', criteria: ['low urgency, can wait', 'medium urgency, handle soon', 'high urgency, handle immediately'] } } },
+    response: { model: 'glide', answers: { department: { type: 'choice', choice: 'returns', confidence: 0.9992611288391886, probabilities: { billing: 0.00031500429476013744, returns: 0.9995761331339488, shipping: 0.00010886257129113499 } },
+      urgency: { type: 'score', score: 0, expected_level: 0.27621539375795195, confidence: 0.4999999998141525, probabilities: { 0: 0.7412615353520668, 1: 0.24126153553791435, 2: 0.017476929110018805 },
+        legend: { 0: 'low urgency, can wait', 1: 'medium urgency, handle soon', 2: 'high urgency, handle immediately' } } }, usage: { input_tokens: 743, output_tokens: 252 } } });
+  assert.deepEqual(g.map(r => [r.question_id, r.selected]), [['department', 'returns'], ['urgency', '0']], 'C4: documented array criteria are accepted');
+  // C5: TypeSafe's documented Score example, a decimal score of 1.43.
+  const j = normalizeSystemone({ provider: 'typesafe', request: { model: 'jev-1.13.0', state: 'x', questions: { bug_severity: { type: 'score', instructions: 'x', criteria: ['cosmetic', 'workaround', 'none'] } } },
+    response: { model: 'jev-1.13.0', answers: { bug_severity: { type: 'score', score: 1.43, confidence: 0.35, legend: { 0: 'cosmetic', 1: 'workaround', 2: 'none' }, probabilities: { 0: 0, 1: 0.57, 2: 0.43 } } } } })[0];
+  assert.deepEqual([j.selected, j.score_position], ['1', 1.43], 'C5: a decimal Jev score is a position and does not throw');
+  // C6: TypeSafe's documented Noul example has no confidence; the derived value is labelled.
+  const n = normalizeSystemone({ provider: 'typesafe', request: { model: 'jev-1.13.0', state: 'x', questions: { is_human_escalation: { type: 'noul', instructions: 'x' } } },
+    response: { model: 'jev-1.13.0', answers: { is_human_escalation: { type: 'noul', noul: 0.99 } } } })[0];
+  assert.equal(n.confidence_source, 'derived', 'C6: derived confidence is labelled');
+});
+
+// Same class as P1b, found in this pass: a getter can pass validation and then change when the policy is copied.
+test('policy and wire inputs are read once: a getter that changes between validation and copy cannot erase a default', () => {
+  const flip = (ok, later) => { let n = 0; return { get() { return n++ === 0 ? ok : later; }, enumerable: true }; };
+  const pol = Object.defineProperty({ allowed: ['allow'], act_at: 0.8, operations: { allow: 'billing.refund' } }, 'require_calibration', flip(true, undefined));
+  const compiled = (() => { try { return compileDecisionPolicy({ decisions: { q: pol } }); } catch (e) { return e; } })();
+  if (!(compiled instanceof Error)) {
+    const recs = normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'choice', name: 'q', instructions: 'x', choices: [{ value: 'allow' }, { value: 'deny' }] }] },
+      response: { answers: [{ type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'deny') }] }, receivedAt: at });
+    assert.notEqual(route(compiled, 'q', recs, { now }).outcome, 'act', 'a flipped require_calibration must not act without calibration');
+  }
+  const act = flip(0.8, 0.0001);
+  const pol2 = Object.defineProperty({ allowed: ['allow'], min_margin: 0, require_calibration: false }, 'act_at', act);
+  const c2 = compileDecisionPolicy({ decisions: { q: pol2 } });
+  assert.equal(c2.decisions.q.act_at, 0.8, 'the validated act_at is the one kept');
+  // Wire inputs: a request whose choice value flips after validation.
+  const choice = Object.defineProperty({}, 'value', flip('deny', 'allow'));
+  assert.throws(() => oaRun({ type: 'choice', name: 'q', instructions: 'x', choices: [choice, { value: 'reject' }] },
+    { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: twoProbs('allow', 'reject') }, allowPolicy, 'q'), /malformed/, 'flipped declaration');
 });

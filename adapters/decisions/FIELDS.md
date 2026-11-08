@@ -37,6 +37,13 @@ This session can't load vendor pages (its proxy refuses docs.typesafe.ai, docs.f
 | predicate | `probability` | confirmed (Curbi-env) |
 | choice | `choice` and a required `confidence` in [0,1] (missing, null, string or out-of-range is malformed); `probabilities` is an array of `{value, probability}`. `choice` and each `value` must be strictly equal to a declared choice (string or boolean); object-form probabilities and null or object values are malformed | confirmed (Curbi-env, CTO) |
 | score | `score` is always a number, the weighted mean of level indices (e.g. 1.1). `confidence` is required in [0,1]. `probabilities` items are `{value: integer level index, label, probability}`; every item needs a label, and indices must be in range, unique, and labelled with their declared level. Request levels are `{label, description}`, 2 to 10. A string score is malformed | confirmed (Curbi-env, CTO) |
+| choice declaration | `choices` is an array of 2 to 255 objects `{value: string \| boolean, description?: string}` (SDK `QuestionParamChoice.Choice`). Only `value` is read: a `label`, `name`, `key` or any other field is malformed, as are a missing or non-string/boolean `value`, bare strings or booleans, duplicates, and values whose string forms collide (`"true"` and `true`). Checked before any answer, refusals included | confirmed (SDK `7407fd5f`, CTO re-review 6717768775) |
+| score declaration | `levels` is an array of 2 to 10 objects `{label: string, description?: string}` (SDK `QuestionParamScore.Level`). Only `label` is read: a `value`, `name` or other field is malformed, as are a missing or non-string `label`, bare strings and duplicate labels | confirmed (SDK `7407fd5f`, CTO re-review 6717768775) |
+
+## Policy and inputs
+
+- A policy field that is present with the value `undefined`, at the top level or inside `consensus`, `calibration` or a `pin` entry, is refused. Omit the field to get its default (`min_margin` 0, `below` hand_off, `max_calibration_age_days` 30, `require_calibration` true when `operations` is set). CTO re-review 6717768775.
+- The policy, request and response are each copied to plain data once (`structuredClone`) before validation, and only the copy is read. Getters therefore can't change a value between the check and its use, and proxies or functions are refused.
 
 ## Still open
 - **Microsoft-Decision-1:** no primary API documentation reachable from either session. Not modeled.
