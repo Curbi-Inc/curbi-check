@@ -506,6 +506,8 @@ def normalize_decisions(*, provider, request=_MISSING, response=_MISSING, receiv
     response, rs_bound = _bind(response, response_bytes, "response")
     if not isinstance(provider, str) or not _is_obj(request) or not isinstance(request.get("model"), str) or not isinstance(request.get("questions"), list):
         raise Malformed("request needs model and questions")
+    if provider in _SYSTEMONE_REQUIRED:
+        raise Malformed(f"{provider} answers in the systemone shape; use normalizeSystemone")
     if not _is_obj(response) or not isinstance(response.get("answers"), list):
         raise Malformed("response needs answers")
     base = {"shape": "decisions", "provider": provider, "model": request["model"],

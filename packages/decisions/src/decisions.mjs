@@ -225,6 +225,9 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
   const rq = bind(request, requestBytes, 'request'), rs = bind(response, responseBytes, 'response');
   request = rq.value; response = rs.value;
   if (typeof provider !== 'string' || !isObj(request) || typeof request.model !== 'string' || !Array.isArray(request.questions)) throw new Malformed('request needs model and questions');
+  // Fastino and TypeSafe answer in the systemone shape only. A decisions-shaped answer labeled as one of them would
+  // satisfy a pin meant for that vendor (CAIO bypass corpus, 2026-11-08), so the label is refused here.
+  if (Object.hasOwn(SYSTEMONE_REQUIRED, provider)) throw new Malformed(`${provider} answers in the systemone shape; use normalizeSystemone`);
   if (!isObj(response) || !Array.isArray(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'decisions', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
     request_digest: digest(rq.bound ? requestBytes : request), response_digest: digest(rs.bound ? responseBytes : response), received_at: receivedAt ?? null,

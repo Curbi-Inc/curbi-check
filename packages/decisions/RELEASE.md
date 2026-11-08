@@ -25,7 +25,7 @@ Prepared by CAIO; published by the release owner (CTO). Nothing here is publishe
 
 ## Local evidence (CAIO, this branch)
 - `npm pack ./packages/decisions`: 6 files, 12.1 kB. A clean consumer imported `@curbi/decisions` from `node_modules`.
-- `python -m build packages/decisions-py`: wheel and sdist pass `twine check`. The installed wheel, imported from `site-packages`, passes 1,797 tests: 1,790 parity vectors plus 7 native tests.
+- `python -m build packages/decisions-py`: wheel and sdist pass `twine check`. The installed wheel, imported from `site-packages`, passes 1,800 tests: 1,793 parity vectors plus 7 native tests.
 - Artifact digests are in the #43 post for this branch. Rebuilds after any change will differ.
 
 ## Limits

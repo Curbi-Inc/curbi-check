@@ -118,6 +118,8 @@ BASES.forEach(([shape, provider, req, res], bi) => {
   const rqBytes = enc(JSON.stringify(req)), r = attempt(() => fn({ provider, requestBytes: rqBytes, response: res, receivedAt: at }));
   out.push({ kind: 'normalize', name: `${bi}:raw-request-only`, shape, args: { provider, response: res, received_at: at, request_bytes_b64: b64(rqBytes) }, ...(r.ok ? { ok: true, records: r.value } : { ok: false, error: r.error }) });
 });
+for (const pv of ['fastino', 'typesafe', 'azure-openai']) { const [, , req, res] = BASES[9]; const r = attempt(() => D.normalizeDecisions({ provider: pv, request: req, response: res, receivedAt: at }));
+  out.push({ kind: 'normalize', name: `decisions-provider-${pv}`, shape: 'decisions', args: { provider: pv, request: req, response: res, received_at: at }, ...(r.ok ? { ok: true, records: r.value } : { ok: false, error: r.error }) }); }
 out.push({ kind: 'normalize', name: 'unknown-provider', shape: 'systemone', args: { provider: 'acme', request: BASES[0][2], response: BASES[0][3] }, ...(() => { const r = attempt(() => D.normalizeSystemone({ provider: 'acme', request: BASES[0][2], response: BASES[0][3] })); return r.ok ? { ok: true, records: r.value } : { ok: false, error: r.error }; })() });
 
 // Policies.
