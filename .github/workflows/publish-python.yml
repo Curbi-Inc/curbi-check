@@ -2,8 +2,8 @@ name: publish-python
 on:
   workflow_dispatch:
     inputs:
-      version: {description: 'Reviewed version for both Python packages', required: true, default: '0.1.0'}
-      project: {description: 'Publish one reviewed project (PyPI pending identities bootstrap sequentially)', type: choice, required: true, options: [curbi-langchain, curbi-llamaindex]}
+      version: {description: 'Reviewed version for the Python packages', required: true, default: '0.1.0'}
+      project: {description: 'Publish one reviewed project (PyPI pending identities bootstrap sequentially)', type: choice, required: true, options: [curbi-langchain, curbi-llamaindex, curbi-decisions]}
       confirm_publish: {description: 'Publish the selected reviewed distribution publicly using configured PyPI trust', type: boolean, required: true, default: false}
 permissions: {contents: read}
 concurrency: {group: publish-python, cancel-in-progress: false}
@@ -15,12 +15,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - run: python scripts/check-packages.py --kind python --version "$RELEASE_VERSION"
-        env: {RELEASE_VERSION: '${{ inputs.version }}'}
+      - run: python scripts/check-packages.py --kind python --package "$RELEASE_PROJECT" --version "$RELEASE_VERSION"
+        env: {RELEASE_VERSION: '${{ inputs.version }}', RELEASE_PROJECT: '${{ inputs.project }}'}
       - run: python -m pip install -r packages/langchain/requirements-test.txt -r packages/llamaindex/requirements-test.txt twine==7.0.0
       - run: |
           python -m build packages/langchain --outdir release-dist/langchain
           python -m build packages/llamaindex --outdir release-dist/llamaindex
+          python -m build packages/decisions-py --outdir release-dist/decisions
           python -m twine check release-dist/*/*
           python -m pip install --no-deps release-dist/*/*.whl
           python -m pip check
@@ -28,8 +29,8 @@ jobs:
         shell: bash
         run: |
           cd "$RUNNER_TEMP"
-          python -c "import curbi_langchain,curbi_llamaindex;assert 'site-packages' in curbi_langchain.__file__ and 'site-packages' in curbi_llamaindex.__file__"
-          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" -q
+          python -c "import curbi_langchain,curbi_llamaindex,curbi_decisions;assert all('site-packages' in m.__file__ for m in (curbi_langchain,curbi_llamaindex,curbi_decisions))"
+          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" "$GITHUB_WORKSPACE/packages/decisions-py/tests" -q
       - uses: actions/upload-artifact@v4
         with: {name: reviewed-python-packages, path: 'release-dist/', retention-days: 7}
   publish:
@@ -48,3 +49,7 @@ jobs:
         if: ${{ inputs.project == 'curbi-llamaindex' }}
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
         with: {packages-dir: release-dist/llamaindex/}
+      - name: Publish curbi-decisions using PyPI trusted publishing
+        if: ${{ inputs.project == 'curbi-decisions' }}
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
+        with: {packages-dir: release-dist/decisions/}

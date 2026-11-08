@@ -22,6 +22,21 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/consumer" --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/npm-dist/*.tgz
           cd "$RUNNER_TEMP/consumer"
           node --input-type=module -e "const p=await import('@curbi/vercel');if(typeof p.curbiMiddleware!=='function'||!import.meta.resolve('@curbi/vercel').includes('node_modules'))throw Error('packed import failed');console.log('packed consumer import passed')"
+  decisions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: node --test adapters/decisions/test/*.test.mjs packages/decisions/test/*.test.mjs
+      - name: Pack and install as a clean consumer
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-dist" "$RUNNER_TEMP/consumer"
+          npm pack ./packages/decisions --ignore-scripts --pack-destination "$RUNNER_TEMP/npm-dist"
+          npm install --prefix "$RUNNER_TEMP/consumer" --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/npm-dist/*.tgz
+          cd "$RUNNER_TEMP/consumer"
+          node --input-type=module -e "const p=await import('@curbi/decisions');if(typeof p.route!=='function'||!import.meta.resolve('@curbi/decisions').includes('node_modules'))throw Error('packed import failed');console.log('packed consumer import passed')"
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -36,6 +51,7 @@ jobs:
         run: |
           python -m build packages/langchain --outdir release-dist/langchain
           python -m build packages/llamaindex --outdir release-dist/llamaindex
+          python -m build packages/decisions-py --outdir release-dist/decisions
           python -m twine check release-dist/*/*
       - name: Test installed wheels, not source imports
         shell: bash
@@ -43,5 +59,5 @@ jobs:
           python -m pip install --no-deps release-dist/*/*.whl
           python -m pip check
           cd "$RUNNER_TEMP"
-          python -c "import curbi_langchain,curbi_llamaindex;assert 'site-packages' in curbi_langchain.__file__ and 'site-packages' in curbi_llamaindex.__file__"
-          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" -q
+          python -c "import curbi_langchain,curbi_llamaindex,curbi_decisions;assert all('site-packages' in m.__file__ for m in (curbi_langchain,curbi_llamaindex,curbi_decisions))"
+          python -m pytest "$GITHUB_WORKSPACE/packages/langchain/tests" "$GITHUB_WORKSPACE/packages/llamaindex/tests" "$GITHUB_WORKSPACE/packages/decisions-py/tests" -q
