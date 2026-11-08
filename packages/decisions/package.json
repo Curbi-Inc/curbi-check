@@ -1,0 +1,15 @@
+{
+  "name": "@curbi/decisions",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Deterministic policy checks for decision-model answers (TypeSafe Jev, Fastino GLiDE, OpenAI Decisions) before an agent acts.",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "exports": {".": {"types": "./src/index.d.ts", "import": "./src/decisions.mjs"}},
+  "files": ["src", "README.md", "LICENSE", "CHANGELOG.md"],
+  "repository": {"type": "git", "url": "git+https://github.com/Curbi-Inc/curbi-check.git", "directory": "packages/decisions"},
+  "homepage": "https://github.com/Curbi-Inc/curbi-check/tree/main/adapters/decisions",
+  "bugs": {"url": "https://github.com/Curbi-Inc/curbi-check/issues"},
+  "publishConfig": {"access": "public"},
+  "scripts": {"test": "node --test test/*.test.mjs"}
+}
