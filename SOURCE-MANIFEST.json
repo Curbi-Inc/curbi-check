@@ -5,8 +5,8 @@
     {
       "publicPath": "checker/check-api.js",
       "sourceSha256": "8d554c71843ab5aa18f04c7302b8dd063de742cee1743d1aaa3e1c167c87c861",
-      "publicSha256": "5497f59138cd215b19238bbfbe2d12e15dc163b2db75c685cb1f2472df736360",
-      "transform": "Unmodified production checker bytes with MIT attribution header; relative receipts import unchanged",
+      "publicSha256": "41475439cebfc43f0bc427fc9000a96dccd1b78774e26d3841f6f72c9fd1fd88",
+      "transform": "PROPOSED CAIO PATCH (caio/corpus-expansion), not yet in production: the production checker bytes from sourceCommit with MIT attribution header, plus two changes in ckMoreActed: a passive claim's subject may be up to four words after your/the/our/this/that/my/their, stopping at clause words; and 'whether' joins the condition words that suppress a claim. Re-export from curbi-platform after the CTO applies it.",
       "sourceCommit": "27cfc9cb68a2ff37a885ddb8b26c48ba6460047d",
       "sourcePath": "revenue-engine/claimcheck-web-v14/v15/check-api.js"
     },
