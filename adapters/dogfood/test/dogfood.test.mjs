@@ -160,3 +160,7 @@ test('documented false positive: a long "No A, B, ... claim" disclaimer still fl
   assert.deepEqual(rules('No hosted tenant-ledger restart, provider POST-count, customer one-click onboarding, universal interception or production/live-money qualification claim.'), ['forbid:status-overclaim']);
   assert.deepEqual(rules('No universal interception claim.'), []);
 });
+
+test('a fence indented inside a list item is dropped too', () => {
+  assert.deepEqual(rules('- Examples:\n    ```text\n    I merged #312.\n    ```\n- Done.'), []);
+});

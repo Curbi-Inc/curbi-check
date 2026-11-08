@@ -17,7 +17,7 @@ export function renderPlain(md) {
   if (typeof md !== 'string') throw new TypeError('post body must be a string');
   return md
     .replace(/\r\n?/g, '\n')
-    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '')
+    .replace(/^[ \t]*(```|~~~)[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '')
     .replace(/!?\[([^\]]*)\]\([^)\s]*\)/g, '$1')
     .replace(/<\/?[a-z][^>]*>/gi, '')
     .replace(/`([^`]*)`/g, '$1')
