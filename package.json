@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/*/*.test.mjs proof/test/conformance.test.mjs adapters/connectors/test/*.test.mjs adapters/stream-check/test/*.test.mjs adapters/agent-kit/test/*.test.mjs"
+    "test": "node --test test/*/*.test.mjs proof/test/conformance.test.mjs adapters/connectors/test/*.test.mjs adapters/stream-check/test/*.test.mjs adapters/agent-kit/test/*.test.mjs adapters/decisions/test/*.test.mjs"
   },
   "dependencies": {
     "ai": "7.0.138",
