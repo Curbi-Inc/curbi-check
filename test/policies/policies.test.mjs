@@ -32,3 +32,13 @@ test('ai-agent-verification: labelled as a verification policy, never as securit
   for (const claim of [/prevents? (hacking|attacks|breaches)/i, /secures? (your )?(infrastructure|systems|data)/i, /protects? against/i])
     assert.doesNotMatch(text, claim);
 });
+
+for (const id of ['mcp-tool-claims', 'coding-agent-claims']) test(`${id}: labelled as a verification policy, never as security`, () => {
+  const t = JSON.parse(readFileSync(new URL(`${id}.json`, dir), 'utf8'));
+  const text = JSON.stringify(t.template);
+  assert.equal(t.template.category, 'ai-agents');
+  assert.match(t.template.description, /^A verification policy, not a security product\./);
+  assert.match(t.template.description, /does not /);
+  for (const claim of [/prevents? (hacking|attacks|breaches)/i, /secures? (your )?(infrastructure|systems|data)/i, /protects? against/i, /detects? (prompt )?injection/i])
+    assert.doesNotMatch(text.replace(/does not detect prompt injection/g, ''), claim);
+});
