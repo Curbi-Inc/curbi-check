@@ -27,7 +27,7 @@ const CASES = [
   // ranges: the upper bound is a price claim too
   ['r1', 'Starter is $49-59.', ['mismatch:Starter']], ['r2', 'Starter is $49 to 59.', ['mismatch:Starter']], ['r3', 'Starter is $49–59.', ['mismatch:Starter']],
   ['r4', 'Starter is $49 - $59.', ['mismatch:Starter']], ['r5', 'Enterprise is $99-199.', []], ['r6', 'Enterprise is $99 to $199.', []],
-  ['r7', 'Starter is $49 for 1-5 seats.', []], ['r8', 'Starter is $49 - 10% off for annual plans.', []], ['r9', 'Starter is $49 to start.', []],
+  ['r7', 'Starter is $49 for 1-5 seats.', []], ['r8', 'Starter is $49 - 10% off for annual plans.', ['discount']], ['r9', 'Starter is $49 to start.', []],
   // "free" is a price claim of $0
   ['f1', 'Starter is free.', ['mismatch:Starter']], ['f2', 'Starter is completely free.', ['mismatch:Starter']], ['f3', 'Starter is at no cost.', ['mismatch:Starter']],
   ['f4', 'Starter costs nothing.', ['mismatch:Starter']], ['f5', "Starter's free of charge.", ['mismatch:Starter']], ['f6', 'Basic is free.', []],

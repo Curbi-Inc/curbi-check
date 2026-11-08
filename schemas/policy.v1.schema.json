@@ -99,6 +99,14 @@
           "negatable": {
             "type": "boolean",
             "default": true
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "word",
+              "prefix"
+            ],
+            "default": "word"
           }
         }
       }
@@ -115,6 +123,35 @@
         "maxLength": 60
       },
       "description": "Past-tense verb -> operation, e.g. {\"booked\": \"calendar.book\"}."
+    },
+    "discounts": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Approved discounts. A claimed \"N% off\" (or half price, buy one get one) passes only when listed; the discounted price then counts as approved. Without items, the discount applies to every priced item.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "percent"
+        ],
+        "properties": {
+          "percent": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Names from policy.prices[].item."
+          }
+        }
+      }
     },
     "unknownAmounts": {
       "enum": [
