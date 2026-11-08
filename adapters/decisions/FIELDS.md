@@ -46,5 +46,14 @@ This session can't load vendor pages (its proxy refuses docs.typesafe.ai, docs.f
 - The policy, request and response are each copied to plain data once (`structuredClone`) before validation, and only the copy is read. Getters therefore can't change a value between the check and its use, and proxies or functions are refused.
 
 ## Still open
-- **Microsoft-Decision-1:** no primary API documentation reachable from either session. Not modeled.
+- **Microsoft-Decision-1: a primary source exists but hasn't been loaded. Not modeled.** Microsoft documents the model on Learn, at "Deploy and use Microsoft-Decision-1 in Microsoft Foundry" (`https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision`, source `MicrosoftDocs/azure-ai-docs` `articles/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision.md`).
+  - **Unconfirmed, from search summaries of that page (2026-11-08):**
+    - The request appears to be the systemone shape: `model` (your Foundry deployment name), `state`, and a `questions` object with `noul` (with a `criteria` map of `true`/`false` labels), `choice` (criteria keyed by option) and `score` (ordered criteria).
+    - It's sent to the Foundry resource's decision endpoint.
+    - Third-party pages also list OpenRouter (`microsoft/microsoft-decision-1` on its Decisions API) and Vercel AI Gateway.
+  - **Not found in any summary:**
+    - the endpoint path;
+    - the response envelope and per-answer fields (`confidence`, `legend`, `expected_level`, refusal);
+    - auth headers.
+  - **Why it stays unmodeled:** this session's proxy refuses learn.microsoft.com, and the docs repository is outside this session's repository scope, so it's not modeled. A session that can load the page should copy the request and response JSON verbatim. If the response matches systemone, it becomes a third `systemone` provider with its own required-field table, tested against those examples.
 - Vendor prices are kept out of the adapter.
