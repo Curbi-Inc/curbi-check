@@ -38,7 +38,7 @@ function openaiProbs(o, options, type, raw) {
     let k;
     if (type === 'score') {
       if (!Number.isInteger(e.value) || e.value < 0 || e.value >= options.length) throw new Malformed('probabilities: level index out of range');
-      if (e.label !== undefined && e.label !== options[e.value]) throw new Malformed('probabilities: label does not match its level index');
+      if (e.label !== options[e.value]) throw new Malformed('probabilities: each level needs the label of its declared level');
       k = options[e.value];
     } else {
       // Exact membership by raw type: "true" is not the declared boolean true.
@@ -102,8 +102,13 @@ function checkSystemoneAnswer(provider, id, q, a, options) {
     if (provider === 'fastino' && !(Number.isInteger(a.score) && a.score >= 0 && a.score <= top)) throw new Malformed(`question ${id}: GLiDE score is an integer level index`);
     if (provider === 'typesafe' && !(typeof a.score === 'number' && Number.isFinite(a.score))) throw new Malformed(`question ${id}: TypeSafe score is a number`);
     if (provider === 'fastino' && !(typeof a.expected_level === 'number' && a.expected_level >= 0 && a.expected_level <= top)) throw new Malformed(`question ${id}: expected_level must be a number in 0..${top}`);
-    const legendSize = Array.isArray(a.legend) ? a.legend.length : isObj(a.legend) ? Object.keys(a.legend).length : -1;
-    if (legendSize !== options.length) throw new Malformed(`question ${id}: legend must have one entry per level`);
+    // The legend is built by the vendor from your criteria: an object keyed "0".."N-1" whose values are the requested
+    // rubric levels in order. Arrays, other keys, non-string values or a reordered rubric are malformed (per CTO review).
+    const rubric = Array.isArray(q.criteria) ? q.criteria : Object.keys(q.criteria).sort((x, y) => x - y).map(k => q.criteria[k]);
+    const keys = isObj(a.legend) ? Object.keys(a.legend) : null;
+    if (!keys || keys.length !== options.length || !options.every(k => Object.hasOwn(a.legend, k)) ||
+        !options.every((k, i) => typeof a.legend[k] === 'string' && a.legend[k] === (typeof rubric[i] === 'string' ? rubric[i] : label(rubric[i]))))
+      throw new Malformed(`question ${id}: legend must map each level index to the requested rubric`);
   }
 }
 export function normalizeSystemone({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
@@ -153,7 +158,7 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     const a = response.answers[i];
     if (!isObj(a)) throw new Malformed('answer ' + i);
     const id = typeof q.name === 'string' ? q.name : String(i);
-    if (typeof q.name === 'string' ? a.name !== q.name : a.name !== undefined) throw new Malformed(`answer ${i} does not match question ${id}`);
+    if (typeof q.name === 'string' ? a.name !== q.name : !(a.name === undefined || a.name === null)) throw new Malformed(`answer ${i} does not match question ${id}`);
     if (!['predicate', 'choice', 'score'].includes(q.type)) throw new Malformed(`question ${id} type ${q.type}`);
     const raw = q.type === 'predicate' ? [true, false] : (q.type === 'choice' ? q.choices : q.levels)?.map(o => isObj(o) ? label(o) : o);
     const options = raw?.map(String);
@@ -161,6 +166,8 @@ export function normalizeDecisions({ provider, request, response, receivedAt, re
     const common = { question_id: id, type: q.type };
     if (a.type === 'refusal') return record(base, { ...common, options, probabilities: null, selected: null, confidence: null, refused: true });
     if (a.type !== q.type) throw new Malformed(`question ${id} answered as ${a.type}`);
+    // Choice and Score answers carry a confidence in [0,1]; a predicate's is optional but must be valid when present.
+    if (q.type !== 'predicate' ? !isProb(a.confidence) : (Object.hasOwn(a, 'confidence') && !isProb(a.confidence))) throw new Malformed(`question ${id}: confidence must be a number in [0,1]`);
     if (q.type === 'predicate') return record(base, { ...common, refused: false, ...binary(a.probability, a.confidence) });
     // Every OpenAI Score is a numeric mean position, whole numbers included (per CTO re-reviews); it never selects:
     // the level comes from the probabilities and the position is kept as score_position. Choices may be booleans.
@@ -201,6 +208,7 @@ export function compileDecisionPolicy(p) {
       const c = q.calibration;
       if (!isObj(c) || typeof c.dataset !== 'string' || !isProb(c.accuracy_at_threshold) || !Number.isFinite(Date.parse(c.measured_at))) bad('calibration: {dataset, accuracy_at_threshold, measured_at}');
     }
+    if (q.require_calibration !== undefined && typeof q.require_calibration !== 'boolean') bad('require_calibration: boolean');
     if (q.max_calibration_age_days !== undefined && !(Number.isFinite(q.max_calibration_age_days) && q.max_calibration_age_days > 0)) bad('max_calibration_age_days: positive number');
     if (q.operations !== undefined && !(isObj(q.operations) && Object.entries(q.operations).every(([k, v]) => q.allowed.includes(k) && typeof v === 'string'))) bad('operations: {allowed option: operation}');
     out[id] = { min_margin: 0, below: 'hand_off', max_calibration_age_days: 30, require_calibration: q.operations !== undefined, ...structuredClone(q) };

@@ -173,7 +173,7 @@ test('decisions shape: array probabilities {value, probability} act, and score l
   assert.deepEqual(recs[0].probabilities, { eligible: 0.97, ineligible: 0.02, unclear: 0.01 });
   assert.equal(route(policy, 'refund_eligible', recs, { now }).outcome, 'act');
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'How bad?', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
-  const [s] = normalizeDecisions({ provider: 'openai', request: sreq, response: { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'sev', score: 1.9,
+  const [s] = normalizeDecisions({ provider: 'openai', request: sreq, response: { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'sev', score: 1.9, confidence: 0.9,
     probabilities: [{ value: 0, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.06 }, { value: 2, label: 'severe', probability: 0.92 }] }] }, receivedAt: at });
   assert.deepEqual([s.options, s.selected, s.score_position], [['none', 'minor', 'severe'], 'severe', 1.9]);
   assert.throws(() => normalizeDecisions({ provider: 'openai', request: oaReq, response: { answers: [{ type: 'choice', name: 'refund_eligible', choice: 'eligible', probabilities: [{ value: 'eligible', probability: 0.5 }, { value: 'eligible', probability: 0.5 }] }] }, receivedAt: at }), /malformed/, 'duplicate values are not silently merged');
@@ -184,7 +184,7 @@ test('systemone shape: array criteria give string options for Choice and indexed
   const creq = { model: 'fastino/GLiDE', state: 's', questions: { refund_eligible: { type: 'choice', instructions: 'x', criteria: ['eligible', 'ineligible', 'unclear'] } } };
   assert.throws(() => one(creq, glide({ eligible: 0.96, ineligible: 0.03, unclear: 0.01 })), /malformed/, 'Choice criteria are an object for both vendors (per CTO review 6710879991)');
   const sreq = { model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
-  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: ['none', 'minor', 'severe'] } } });
+  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 2, expected_level: 1.9, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.06, '2': 0.92 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } });
   assert.deepEqual([s.options, s.selected], [['0', '1', '2'], '2']);
 });
 
@@ -192,7 +192,7 @@ test('systemone shape: array criteria give string options for Choice and indexed
 // probabilities; the fractional value is kept, never used to select.
 test('systemone shape: a fractional score selects the top-probability level and keeps the position', () => {
   const sreq = { model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
-  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 }, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
+  const [s] = one(sreq, { answers: { sev: { type: 'score', score: 1.84, confidence: 0.8, probabilities: { '0': 0.03, '1': 0.1, '2': 0.87 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } }, 'typesafe');
   assert.deepEqual([s.selected, s.score_position], ['2', 1.84]);
 });
 
@@ -201,7 +201,7 @@ test('systemone shape: a fractional score selects the top-probability level and 
 const sevPolicy = compileDecisionPolicy({ decisions: { sev: { allowed: ['0', '1', '2'], act_at: 0.9, min_margin: 0.5,
   pin: [{ provider: 'typesafe', model: 'jev-1.13.0' }], calibration, max_calibration_age_days: 30 } } });
 const tsScore = score => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
-  { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
+  { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } }, 'typesafe');
 test('TypeSafe fractional score: out of range or inconsistent with the probabilities never acts; the documented mean acts', () => {
   for (const bad of [999.5, -1.5, 0.93]) {
     const out = route(sevPolicy, 'sev', tsScore(bad), { now });
@@ -215,7 +215,7 @@ test('TypeSafe fractional score: out of range or inconsistent with the probabili
 // (the level index) and a label. The fractional position is kept, never turned into a vendor categorical answer.
 test('decisions shape: the documented numeric Score response normalizes, keeps its position and routes', () => {
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'urgency', instructions: 'How urgent?', levels: [{ label: 'low' }, { label: 'medium' }, { label: 'high' }] }] };
-  const res = { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'urgency', score: 1.1,
+  const res = { model: 'gpt-6-luna', answers: [{ type: 'score', name: 'urgency', score: 1.1, confidence: 0.6,
     probabilities: [{ value: 0, label: 'low', probability: 0.1 }, { value: 1, label: 'medium', probability: 0.7 }, { value: 2, label: 'high', probability: 0.2 }] }] };
   const [r] = normalizeDecisions({ provider: 'openai', request: sreq, response: res, receivedAt: at });
   assert.deepEqual([r.options, r.probabilities, r.selected, r.score_position], [['low', 'medium', 'high'], { low: 0.1, medium: 0.7, high: 0.2 }, 'medium', 1.1]);
@@ -231,20 +231,20 @@ test('decisions shape: the documented numeric Score response normalizes, keeps i
 // GLiDE keeps its separate integer level-index contract.
 test('whole-number scores are positions for TypeSafe and OpenAI: checked against the mean; GLiDE indices still select', () => {
   const ts = (score, probabilities) => one({ model: 'jev-1.13.0', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
-    { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities, legend: ['none', 'minor', 'severe'] } } }, 'typesafe');
+    { answers: { sev: { type: 'score', score, confidence: 0.9, probabilities, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } }, 'typesafe');
   const bad = route(sevPolicy, 'sev', ts(0, { '0': 0.95, '1': 0, '2': 0.05 }), { now });
   assert.notEqual(bad.outcome, 'act'); assert.ok(bad.reasons.includes('inconsistent'), JSON.stringify(bad));
   const goodPolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, act_at: 0.85 } } });
   assert.deepEqual(route(goodPolicy, 'sev', ts(1, { '0': 0.05, '1': 0.9, '2': 0.05 }), { now }), { outcome: 'act', selected: '1', reasons: [] }, 'a valid integer mean acts');
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'urgency', instructions: 'x', levels: [{ label: 'low' }, { label: 'medium' }, { label: 'high' }] }] };
-  const oa = (score, ps) => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'urgency', score,
+  const oa = (score, ps) => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'urgency', score, confidence: 0.6,
     probabilities: ps.map((probability, value) => ({ value, label: ['low', 'medium', 'high'][value], probability })) }] }, receivedAt: at });
   const p = compileDecisionPolicy({ decisions: { urgency: { allowed: ['low', 'medium', 'high'], act_at: 0.6, min_margin: 0.4, pin: [{ provider: 'openai', model: 'gpt-6-luna' }], calibration, max_calibration_age_days: 30 } } });
   assert.ok(route(p, 'urgency', oa(0, [0.95, 0, 0.05]), { now }).reasons.includes('inconsistent'));
   assert.equal(route(p, 'urgency', oa(1, [0.1, 0.8, 0.1]), { now }).outcome, 'act');
   const glidePolicy = compileDecisionPolicy({ decisions: { sev: { ...sevPolicy.decisions.sev, pin: [{ provider: 'fastino', model: 'fastino/GLiDE' }] } } });
   const [g] = one({ model: 'fastino/GLiDE', state: 's', questions: { sev: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } },
-    { answers: { sev: { type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } } });
+    { answers: { sev: { type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } } });
   assert.deepEqual([g.selected, g.score_position], ['2', 1.93], 'GLiDE integer score is a level index; its expected_level is the checked position');
   assert.equal(route(glidePolicy, 'sev', [g], { now }).outcome, 'act');
 });
@@ -253,7 +253,7 @@ test('whole-number scores are positions for TypeSafe and OpenAI: checked against
 // identity are checked before routing; a mismatch is malformed.
 test('OpenAI numeric value plus label: duplicate, out-of-range or swapped indices are malformed', () => {
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
-  const run = probabilities => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score: 1.93, probabilities }] }, receivedAt: at });
+  const run = probabilities => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score: 1.93, confidence: 0.9, probabilities }] }, receivedAt: at });
   assert.throws(run([{ value: 0, label: 'none', probability: 0.02 }, { value: 0, label: 'minor', probability: 0.03 }, { value: 0, label: 'severe', probability: 0.95 }]), /malformed/, 'duplicate index');
   assert.throws(run([{ value: 999, label: 'none', probability: 0.02 }, { value: 999, label: 'minor', probability: 0.03 }, { value: 999, label: 'severe', probability: 0.95 }]), /malformed/, 'out of range');
   assert.throws(run([{ value: 2, label: 'none', probability: 0.02 }, { value: 1, label: 'minor', probability: 0.03 }, { value: 0, label: 'severe', probability: 0.95 }]), /malformed/, 'swapped labels');
@@ -284,7 +284,7 @@ test('decisions shape: duplicate, extra, missing or mismatched answers are malfo
 test('decisions shape: malformed OpenAI wire types are refused; valid numeric means, boolean and string choices pass', () => {
   const sreq = { model: 'gpt-6-luna', input: 'x', questions: [{ type: 'score', name: 'sev', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] }] };
   const items = v => [0, 1, 2].map(i => ({ value: v(i), label: ['none', 'minor', 'severe'][i], probability: [0.02, 0.03, 0.95][i] }));
-  const sc = (score, probabilities) => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score, probabilities }] }, receivedAt: at });
+  const sc = (score, probabilities) => () => normalizeDecisions({ provider: 'openai', request: sreq, response: { answers: [{ type: 'score', name: 'sev', score, confidence: 0.9, probabilities }] }, receivedAt: at });
   assert.throws(sc('severe', items(i => i)), /malformed/, 'string score');
   assert.throws(sc(1.93, items(() => null)), /malformed/, 'null value');
   assert.throws(sc(1.93, items(() => ({ invalid: true }))), /malformed/, 'object value');
@@ -334,7 +334,7 @@ test('decisions shape: only predicate, choice and score are supported; any other
 // normalization: required fields, types and domains. A malformed answer never reaches routing.
 const gChoice = () => ({ type: 'choice', choice: 'allow', confidence: 0.9, probabilities: { allow: 0.95, deny: 0.05 } });
 const gNoul = () => ({ type: 'noul', noul: 0.97, confidence: 0.94 });
-const gScore = () => ({ type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] });
+const gScore = () => ({ type: 'score', score: 2, expected_level: 1.93, confidence: 0.9, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } });
 const gReq = { model: 'fastino/GLiDE', state: 's', questions: {
   c: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } },
   n: { type: 'noul', instructions: 'x' },
@@ -360,7 +360,7 @@ test('GLiDE raw schema: required fields, types and domains are validated before 
 test('TypeSafe raw schema: Noul needs no confidence and records it as derived; Choice and Score keep their required fields', () => {
   const tReq = { model: 'jev-1.14.0', state: 's', questions: { n: { type: 'noul', instructions: 'x' }, c: { type: 'choice', instructions: 'x', criteria: { allow: 'a', deny: 'd' } },
     s: { type: 'score', instructions: 'x', criteria: ['none', 'minor', 'severe'] } } };
-  const tAns = () => ({ n: { type: 'noul', noul: 0.97 }, c: gChoice(), s: { type: 'score', score: 1.93, confidence: 0.8, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: ['none', 'minor', 'severe'] } });
+  const tAns = () => ({ n: { type: 'noul', noul: 0.97 }, c: gChoice(), s: { type: 'score', score: 1.93, confidence: 0.8, probabilities: { '0': 0.02, '1': 0.03, '2': 0.95 }, legend: { '0': 'none', '1': 'minor', '2': 'severe' } } });
   const recs = one(tReq, { model: 'jev-1.14.0', answers: tAns() }, 'typesafe');
   const n = recs.find(r => r.question_id === 'n');
   assert.deepEqual([n.confidence_source, Math.round(n.confidence * 100)], ['derived', 94]);
@@ -379,4 +379,39 @@ test('GLiDE Score criteria may be a numeric-key object: sorted and reindexed to 
   const [r] = one(req, { answers: { s: gScore() } });
   assert.deepEqual([r.options, r.selected], [['0', '1', '2'], '2']);
   assert.throws(() => one({ ...req, questions: { s: { ...req.questions.s, criteria: { a: 'none', b: 'minor' } } } }, { answers: { s: gScore() } }), /malformed/, 'non-numeric Score keys');
+});
+
+// CTO re-review 6717162776 / 6717511187: raw contracts and policy booleans are validated before normalization.
+test('systemone legend: an index-keyed object whose values match the requested rubric; arrays, wrong keys, bad values or a reversed rubric are malformed', () => {
+  const ok = gRun({});
+  assert.equal(route(gPolicy, 's', ok, { now }).outcome, 'act', 'control');
+  for (const [why, legend] of [['array', ['none', 'minor', 'severe']], ['wrong keys', { a: 'none', b: 'minor', c: 'severe' }],
+    ['invalid values', { '0': 1, '1': null, '2': 'severe' }], ['reversed rubric', { '0': 'severe', '1': 'minor', '2': 'none' }], ['extra key', { '0': 'none', '1': 'minor', '2': 'severe', '3': 'x' }]])
+    assert.throws(() => gRun({ s: { ...gScore(), legend } }), /malformed/, why);
+});
+
+test('OpenAI raw contract: choice and score need a confidence in [0,1]; score probability items need labels; null names are valid for unnamed questions', () => {
+  const question = { type: 'choice', name: 'q', instructions: 'Choose', choices: [{ value: 'allow' }, { value: 'deny' }] };
+  const answer = { type: 'choice', name: 'q', choice: 'allow', confidence: 0.9, probabilities: [{ value: 'allow', probability: 0.95 }, { value: 'deny', probability: 0.05 }] };
+  const p = compileDecisionPolicy({ decisions: { q: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5 }, 0: { allowed: ['allow', 'deny'], act_at: 0.9, min_margin: 0.5 } } });
+  const check = (q, a, key = 'q') => route(p, key, normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'synthetic', questions: [q] },
+    response: { model: 'gpt-6-luna', answers: [a], usage: { input_tokens: 1, output_tokens: 1 } }, receivedAt: at }), { now });
+  assert.equal(check(question, answer).outcome, 'act', 'control');
+  for (const c of ['high', null, -0.1, 1.1]) assert.throws(() => check(question, { ...answer, confidence: c }), /malformed/, 'confidence ' + c);
+  const { confidence: _c, ...noConf } = answer;
+  assert.throws(() => check(question, noConf), /malformed/, 'missing confidence');
+  const { name: _n, ...unnamed } = question;
+  assert.equal(check(unnamed, { ...answer, name: null }, '0').outcome, 'act', 'documented null name on an unnamed question');
+  assert.deepEqual(check(unnamed, { type: 'refusal', name: null }, '0').reasons, ['refused'], 'a null-name refusal stays a refusal');
+  const sreq = { type: 'score', name: 'sev', instructions: 'x', levels: [{ label: 'none' }, { label: 'minor' }, { label: 'severe' }] };
+  const sp = compileDecisionPolicy({ decisions: { sev: { allowed: ['none', 'minor', 'severe'], act_at: 0.9, min_margin: 0.5 } } });
+  const sc = probabilities => () => normalizeDecisions({ provider: 'openai', request: { model: 'gpt-6-luna', input: 'x', questions: [sreq] },
+    response: { answers: [{ type: 'score', name: 'sev', score: 1.93, confidence: 0.9, probabilities }] }, receivedAt: at });
+  assert.throws(sc([{ value: 0, probability: 0.02 }, { value: 1, probability: 0.03 }, { value: 2, probability: 0.95 }]), /malformed/, 'score items need labels');
+  assert.equal(route(sp, 'sev', sc([0, 1, 2].map(i => ({ value: i, label: ['none', 'minor', 'severe'][i], probability: [0.02, 0.03, 0.95][i] })))(), { now }).outcome, 'act', 'labelled control');
+});
+
+test('policy booleans: require_calibration must be a boolean', () => {
+  for (const v of [0, 1, 'false', null]) assert.throws(() => compileDecisionPolicy({ decisions: { q: { allowed: ['a'], act_at: 0.9, require_calibration: v } } }), /policy\.decisions\.q/, String(v));
+  assert.doesNotThrow(() => compileDecisionPolicy({ decisions: { q: { allowed: ['a'], act_at: 0.9, require_calibration: false } } }));
 });
