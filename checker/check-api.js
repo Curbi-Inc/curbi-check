@@ -38,7 +38,7 @@ function ckMoreActed(text, actions) {
     const ING = [...new Set([verb.replace(/ed$/, '') + 'ing', verb.replace(/d$/, '').replace(/e$/, '') + 'ing', verb.replace(/ed$/, '').replace(/(.)\1$/, '$1') + 'ing'])].map(esc).join('|');
     const rx = [
       // passive with a person or thing as subject: "You were refunded", "It got refunded"
-      new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that)\\s+\\w+)\\s+(?:were|was|got|have\\s+been|has\\s+been)\\s+(?:just\\s+|already\\s+|now\\s+|fully\\s+)?(${v})\\b`, 'gi'),
+      new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:were|was|got|have\\s+been|has\\s+been)\\s+(?:just\\s+|already\\s+|now\\s+|fully\\s+)?(${v})\\b`, 'gi'),
       // emphatic did with the base form: "I did refund you", "We really did cancel it"
       new RegExp(`\\b(?:I|we)\\s+(?:[a-z]+ly\\s+|actually\\s+|just\\s+|already\\s+)?did\\s+(${B})\\b`, 'gi'),
       // coordinated or adverbial first person: "I went ahead and refunded", "we successfully refunded"
@@ -72,7 +72,7 @@ function ckMoreActed(text, actions) {
       new RegExp(`\\b(?:the|your|a|this|that)\\s+(?:full\\s+)?(${nouns})${NOT_THE_ACT}\\s+(?:is|'s|has\\s+been|went|has\\s+gone|have\\s+gone)\\s+(?:already\\s+|now\\s+|all\\s+)?(?:on\\s+(?:its|the)\\s+way|in\\s+progress|underway|going\\s+through|through|all\\s+set(?!\\s+to\\s+be\\s+(?:processed|issued|sent|initiated|started)\\b)|sorted|done)\\b`, 'gi'),
       new RegExp(`\\byou(?:'ll|\\s+will|\\s+should)\\s+(?:see|notice)\\s+(?:the|your|a)\\s+(?:full\\s+)?(${nouns})\\b${NOT_THE_ACT}`, 'gi'),
     ];
-    for (const r of rx) for (const m of text.matchAll(r)) if (!/\b(?:once|if|when|whenever|after|until|before|unless|soon\s+as)\s*$/i.test(text.slice(Math.max(0, m.index - 20), m.index))) out.push({ index: m.index, 0: m[0], 1: verb, length: m[0].length });
+    for (const r of rx) for (const m of text.matchAll(r)) if (!/\b(?:once|if|whether|when|whenever|after|until|before|unless|soon\s+as)\s*$/i.test(text.slice(Math.max(0, m.index - 20), m.index))) out.push({ index: m.index, 0: m[0], 1: verb, length: m[0].length });
   }
   return out;
 }

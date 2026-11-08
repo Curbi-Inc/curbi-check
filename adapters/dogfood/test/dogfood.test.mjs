@@ -45,14 +45,15 @@ test('catches: unrecorded status claims', () => {
   assert.deepEqual(rules('I merged #312.'), ['action:unrecorded']);
   assert.deepEqual(rules("We've deployed the fix."), ['action:unrecorded']);
   assert.deepEqual(rules('The key has been renewed.'), ['action:unrecorded']);
+  assert.deepEqual(rules('The new key has been renewed.'), ['action:unrecorded']);
   assert.deepEqual(rules('I published the package.'), ['action:unrecorded']);
 });
 
 // Found by dogfooding our own #43 posts (2026-11-08): the shipped checker reads first-person and pronoun claims, but
 // not the telegraphic status style ("#316 merged at eaa5b55") or a passive claim whose subject is several words.
 // These pass today. Locked here so a checker change that closes them updates this test on purpose.
-test('documented gaps in the shipped checker: telegraphic and long-subject status claims pass', () => {
-  for (const t of ['#316 merged at eaa5b55.', 'Site #312 merged and deployed.', 'The new key has been renewed.', 'Registry v12 replacement is published.'])
+test('documented gaps in the shipped checker: remaining telegraphic status claims pass', () => {
+  for (const t of ['#316 merged at eaa5b55.', 'Site #312 merged and deployed.', 'Registry v12 replacement is published.'])
     assert.deepEqual(rules(t), [], t);
 });
 
