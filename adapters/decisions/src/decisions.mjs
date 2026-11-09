@@ -78,6 +78,53 @@ function declaredOptions(q, id) {
   if (new Set(options).size !== options.length) bad(`${d.list}: each ${d.key} must be distinct`);
   return { raw, options };
 }
+// Raw-byte binding. When the host passes the exact bytes it sent or received, they are authoritative: they are parsed
+// here, strictly, and the record is built from that parse, so the digest and the decision cover the same bytes.
+// Strict means valid UTF-8 with no BOM, JSON, no duplicate member names (JSON.parse keeps only the last one, which
+// could hide a refusal or a probability), and well-formed Unicode in every string. If the host also passes the parsed
+// object, it must match the bytes exactly (canonical JSON), or the input is malformed (CTO re-review 6718432732).
+function dupScan(text, name) {
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') stack.push({ keys: new Set(), expectKey: true });
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+    else if (c === ',') { const top = stack[stack.length - 1]; if (top) top.expectKey = true; }
+    else if (c === '"') {
+      let j = i + 1; while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      if (top && top.expectKey) {
+        const key = JSON.parse(text.slice(i, j + 1));
+        if (top.keys.has(key)) throw new Malformed(`${name}Bytes: duplicate member ${JSON.stringify(key)}`);
+        top.keys.add(key); top.expectKey = false;
+      }
+      i = j;
+    }
+  }
+}
+function wellFormed(v, name) {
+  if (typeof v === 'string') { if (!v.isWellFormed()) throw new Malformed(`${name}Bytes: lone surrogate in a string`); }
+  else if (Array.isArray(v)) v.forEach(x => wellFormed(x, name));
+  else if (isObj(v)) for (const [k, x] of Object.entries(v)) { wellFormed(k, name); wellFormed(x, name); }
+}
+function strictParse(bytes, name) {
+  if (!(bytes instanceof Uint8Array)) throw new Malformed(`${name}Bytes: a Uint8Array`);
+  let text, value;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch { throw new Malformed(`${name}Bytes: not valid UTF-8`); }
+  try { value = JSON.parse(text); } catch { throw new Malformed(`${name}Bytes: not JSON`); }
+  dupScan(text, name); wellFormed(value, name);
+  return value;
+}
+function bind(obj, bytes, name) {
+  if (bytes === undefined || bytes === null) return { value: snapshot(obj, () => new Malformed(`${name}: plain data only`)), bound: false };
+  const parsed = strictParse(bytes, name);
+  if (obj !== undefined) {
+    const given = snapshot(obj, () => new Malformed(`${name}: plain data only`));
+    if (canonical(given) !== canonical(parsed)) throw new Malformed(`${name}Bytes and ${name} disagree`);
+  }
+  return { value: parsed, bound: true };
+}
 const argmax = p => Object.keys(p).reduce((a, k) => (a === null || p[k] > p[a] ? k : a), null);
 
 function record(base, fields) {
@@ -138,12 +185,14 @@ function checkSystemoneAnswer(provider, id, q, a, options) {
   }
 }
 export function normalizeSystemone({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
-  request = snapshot(request, () => new Malformed('request: plain data only')); response = snapshot(response, () => new Malformed('response: plain data only'));
+  const rq = bind(request, requestBytes, 'request'), rs = bind(response, responseBytes, 'response');
+  request = rq.value; response = rs.value;
   if (!Object.hasOwn(SYSTEMONE_REQUIRED, provider)) throw new Malformed('systemone provider must be fastino or typesafe');
   if (!isObj(request) || typeof request.model !== 'string' || !isObj(request.questions)) throw new Malformed('request needs model and questions');
   if (!isObj(response) || !isObj(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'systemone', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
-    request_digest: digest(requestBytes ?? request), response_digest: digest(responseBytes ?? response), received_at: receivedAt ?? null };
+    request_digest: digest(rq.bound ? requestBytes : request), response_digest: digest(rs.bound ? responseBytes : response), received_at: receivedAt ?? null,
+    bytes_bound: { request: rq.bound, response: rs.bound } };
   const ids = Object.keys(request.questions).sort();
   if (Object.keys(response.answers).length !== ids.length || !Object.keys(response.answers).every(k => Object.hasOwn(request.questions, k)))
     throw new Malformed('answers must match the requested questions exactly');
@@ -173,11 +222,16 @@ export function normalizeSystemone({ provider, request, response, receivedAt, re
 // Shape 2: POST /v1/decisions (OpenAI, gpt-6-luna). request = {model, input, questions:[{type, name, instructions, choices|levels}]},
 // response.answers = [{type, name, probability | choice, confidence[, probabilities] | ...}]; type "refusal" never acts.
 export function normalizeDecisions({ provider, request, response, receivedAt, requestBytes, responseBytes }) {
-  request = snapshot(request, () => new Malformed('request: plain data only')); response = snapshot(response, () => new Malformed('response: plain data only'));
+  const rq = bind(request, requestBytes, 'request'), rs = bind(response, responseBytes, 'response');
+  request = rq.value; response = rs.value;
   if (typeof provider !== 'string' || !isObj(request) || typeof request.model !== 'string' || !Array.isArray(request.questions)) throw new Malformed('request needs model and questions');
+  // Fastino and TypeSafe answer in the systemone shape only. A decisions-shaped answer labeled as one of them would
+  // satisfy a pin meant for that vendor (CAIO bypass corpus, 2026-11-08), so the label is refused here.
+  if (Object.hasOwn(SYSTEMONE_REQUIRED, provider)) throw new Malformed(`${provider} answers in the systemone shape; use normalizeSystemone`);
   if (!isObj(response) || !Array.isArray(response.answers)) throw new Malformed('response needs answers');
   const base = { shape: 'decisions', provider, model: request.model, model_echo: typeof response.model === 'string' ? response.model : null,
-    request_digest: digest(requestBytes ?? request), response_digest: digest(responseBytes ?? response), received_at: receivedAt ?? null };
+    request_digest: digest(rq.bound ? requestBytes : request), response_digest: digest(rs.bound ? responseBytes : response), received_at: receivedAt ?? null,
+    bytes_bound: { request: rq.bound, response: rs.bound } };
   // Answers correspond one to one, in order, with the requested questions: a duplicate, extra, missing or mismatched
   // answer is malformed, so a later answer can never erase a refusal or a conflicting decision.
   if (response.answers.length !== request.questions.length) throw new Malformed('answers must match the requested questions one to one');

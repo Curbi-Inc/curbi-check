@@ -1,0 +1,47 @@
+{
+  "name": "Curbi team outputs (CTO and CAIO posts, commit messages)",
+  "description": "Dogfood policy: status claims about merges, deploys, releases and keys need a DONE record, and overclaims about readiness, security and coverage are findings. Negated mentions pass.",
+  "forbid": [
+    {
+      "id": "status-overclaim",
+      "phrases": [
+        "production ready",
+        "gate 2 passed",
+        "signing is on",
+        "zero bypasses",
+        "bypass free",
+        "cannot be tricked",
+        "can't be tricked",
+        "catches every",
+        "catches all",
+        "universal interception",
+        "fully secure",
+        "100% secure",
+        "guaranteed"
+      ],
+      "why": "Readiness, coverage and security claims stay evidence-gated."
+    },
+    {
+      "id": "unloaded-live",
+      "phrases": [
+        "verified live",
+        "live and verified"
+      ],
+      "why": "\"Verified live\" means the author loaded the production URL; say what was loaded."
+    }
+  ],
+  "actions": {
+    "merged": "git.merge",
+    "pushed": "git.push",
+    "deployed": "release.deploy",
+    "shipped": "release.deploy",
+    "released": "release.publish",
+    "published": "package.publish",
+    "qualified": "qualification.pass",
+    "renewed": "key.renew",
+    "rotated": "key.rotate",
+    "revoked": "key.revoke",
+    "refunded": "billing.refund"
+  },
+  "unknownAmounts": "allow"
+}

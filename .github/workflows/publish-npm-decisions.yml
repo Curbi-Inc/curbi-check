@@ -1,0 +1,39 @@
+name: publish-npm-decisions
+on:
+  workflow_dispatch:
+    inputs:
+      version: {description: 'Reviewed package version', required: true, default: '0.1.0'}
+      confirm_publish: {description: 'Publish the reviewed @curbi/decisions artifact publicly using configured npm trust', type: boolean, required: true, default: false}
+permissions: {contents: read}
+concurrency: {group: publish-npm-decisions, cancel-in-progress: false}
+jobs:
+  build:
+    if: ${{ inputs.confirm_publish && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python3 scripts/check-packages.py --kind npm --package @curbi/decisions --version "$RELEASE_VERSION"
+        env: {RELEASE_VERSION: '${{ inputs.version }}'}
+      - run: node --test adapters/decisions/test/*.test.mjs packages/decisions/test/*.test.mjs
+      - run: mkdir -p release-dist && npm pack ./packages/decisions --ignore-scripts --pack-destination release-dist
+      - uses: actions/upload-artifact@v4
+        with: {name: reviewed-npm-decisions-package, path: 'release-dist/*.tgz', retention-days: 7}
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions: {contents: read, id-token: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', registry-url: 'https://registry.npmjs.org'}
+      - uses: actions/download-artifact@v4
+        with: {name: reviewed-npm-decisions-package, path: release-dist}
+      - name: Require an OIDC-capable npm CLI
+        run: node -e "const v=require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number);if(v[0]<11||(v[0]===11&&(v[1]<5||(v[1]===5&&v[2]<1))))throw Error('npm >=11.5.1 required')"
+      - name: Publish only the built tarball, without a stored npm token
+        run: npm publish release-dist/*.tgz --ignore-scripts --access public --provenance
