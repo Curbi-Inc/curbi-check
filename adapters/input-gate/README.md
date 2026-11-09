@@ -29,6 +29,12 @@ const decision = admitProposal({ proposal, turn, grant, policy, registry, ctx: {
 
 **Turn disposition:** each class's mode is `allow-labeled`, `hand-off` or `block`. The turn's disposition is `proceed_labeled`, `hand_off` or `block`.
 
+## Times
+- **Every time is strict ISO 8601 UTC** (`2026-11-08T20:00:00Z`, optional milliseconds). That covers registry `revocation_checked_at`, each key's `not_after` and each envelope's `issued_at`. Loose forms and junk are refused, and `ctx.now` must be a finite number.
+- **Key validity:** every pinned ed25519 key needs a `not_after`. It's expired at that instant (`now >= not_after`), not only after it.
+- **Revocation data:** it's fresh only if it was checked at or before `now`, and no longer ago than `max_revocation_age_ms`. A check time in the future gives `unconfirmed` (`revocation_data_from_future`), never `verified`.
+- **Why:** this closes the CTO review findings in 6727923670.
+
 ## Boundaries, each locked by a test that fails if broken
 - **No AI judges input text.**
   - The only text logic is literal extraction by the shipped checker.
@@ -44,7 +50,7 @@ const decision = admitProposal({ proposal, turn, grant, policy, registry, ctx: {
   - Model output is an item like any other. Even signed, it never supplies a tuple.
   - No callback can be passed in.
 
-`node adapters/input-gate/mutations.mjs` breaks each boundary in the source, one at a time, and requires a test to fail. All 9 mutations are caught.
+`node adapters/input-gate/mutations.mjs` breaks each boundary in the source, one at a time, and requires a test to fail. All 12 mutations are caught, including three timestamp mutations. Results are read from TAP output.
 
 ## Host work (CTO, curbi-platform)
 - Sign `turn.manifest` in the attestation domain, and append the context checks and manifest to the gate log.

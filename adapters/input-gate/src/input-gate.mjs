@@ -86,23 +86,37 @@ export function compileInputPolicy(input) {
   return Object.freeze({ ...out, hash: digest(out) });
 }
 
+// ---------- times ----------
+// Every time the gate reads is strict ISO 8601 UTC (2026-11-08T20:00:00Z, optional milliseconds) that round-trips
+// through Date: Date.parse alone accepts loose forms and returns NaN for junk, and NaN compares false both ways, which
+// is how an invalid expiry once read as "not expired" (CTO review 6727923670).
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+export function isoTime(v) {
+  if (typeof v !== 'string' || !ISO_UTC.test(v)) return NaN;
+  const ms = Date.parse(v);
+  if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 19) !== v.slice(0, 19)) return NaN;
+  return ms;
+}
+
 // ---------- registry (host-pinned trust material) ----------
 export function compileRegistry(input) {
   const r = plain(input, 'registry');
   walkNoJudge(r, 'registry');
   if (!Number.isInteger(r?.version)) bad('bad_registry', 'registry.version must be an integer');
-  if (typeof r.revocation_checked_at !== 'string' || Number.isNaN(Date.parse(r.revocation_checked_at))) bad('bad_registry', 'registry.revocation_checked_at must be an ISO time');
+  if (!Number.isFinite(isoTime(r.revocation_checked_at))) bad('bad_registry', 'registry.revocation_checked_at must be an ISO 8601 UTC time');
   const ed25519 = new Map(), hmac = new Map();
   for (const k of r.ed25519 ?? []) {
     if (typeof k.kid !== 'string' || typeof k.public_key_pem !== 'string') bad('bad_registry', 'ed25519 keys need kid and public_key_pem');
-    ed25519.set(k.kid, { key: createPublicKey(k.public_key_pem), revoked: k.revoked === true, not_after: k.not_after ? Date.parse(k.not_after) : Infinity, classes: k.classes ?? CLASSES });
+    const notAfter = isoTime(k.not_after);
+    if (!Number.isFinite(notAfter)) bad('bad_registry', `ed25519 key ${k.kid}: not_after must be an ISO 8601 UTC time; every pinned key has a bounded validity`);
+    ed25519.set(k.kid, { key: createPublicKey(k.public_key_pem), revoked: k.revoked === true, not_after: notAfter, classes: k.classes ?? CLASSES });
   }
   for (const h of r.hmac ?? []) {
     if (typeof h.id !== 'string' || typeof h.secret !== 'string' || h.secret.length < 16) bad('bad_registry', 'hmac entries need id and a secret of 16+ characters');
     hmac.set(h.id, { secret: h.secret, revoked: h.revoked === true, classes: h.classes ?? ['tool'] });
   }
   const pub = { version: r.version, revocation_checked_at: r.revocation_checked_at, ed25519: [...ed25519.keys()].sort(), hmac: [...hmac.keys()].sort(), ed25519_pem: (r.ed25519 ?? []).map(k => k.public_key_pem).sort() };
-  return Object.freeze({ version: r.version, revocationCheckedAt: Date.parse(r.revocation_checked_at), ed25519, hmac, digest: digest(pub) });
+  return Object.freeze({ version: r.version, revocationCheckedAt: isoTime(r.revocation_checked_at), ed25519, hmac, digest: digest(pub) });
 }
 
 // In-memory nonce store for tests and single-process hosts. A real host supplies a durable store with the same shape.
@@ -119,24 +133,30 @@ export function verifyProvenance(item, registry, ctx) {
   if (env === undefined || env === null) return { result: 'unsigned', key_id: null, fresh: null, reason: 'no_envelope' };
   if (typeof env !== 'object') return { result: 'denied', key_id: null, fresh: null, reason: 'bad_envelope' };
   for (const k of ENVELOPE_KEY_FIELDS) if (Object.hasOwn(env, k)) return { result: 'denied', key_id: null, fresh: null, reason: 'input_supplied_key' };
-  const revFresh = ctx.now - registry.revocationCheckedAt <= ctx.policy.max_revocation_age_ms;
+  if (!Number.isFinite(ctx.now)) bad('bad_now', 'ctx.now must be a finite time in milliseconds');
+  // Fresh means checked at or before now, and no longer ago than the policy allows. A check time in the future is not
+  // evidence of anything, so it is never fresh.
+  const revAge = ctx.now - registry.revocationCheckedAt, revFuture = revAge < 0;
+  const revFresh = !revFuture && revAge <= ctx.policy.max_revocation_age_ms;
+  const notFresh = revFuture ? 'revocation_data_from_future' : 'stale_revocation_data';
   const nonceSeen = n => ctx.nonces.has(ctx.scope_digest, n);
   if (env.type === 'ed25519') {
     const k = registry.ed25519.get(env.kid);
     if (!k) return { result: 'unconfirmed', key_id: env.kid ?? null, fresh: revFresh, reason: 'unknown_key' };
     if (k.revoked) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'revoked_key' };
-    if (ctx.now > k.not_after) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'expired_key' };
+    if (ctx.now >= k.not_after) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'expired_key' };
     if (!k.classes.includes(item.class)) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'key_not_for_class' };
     const signed = signingPayload(item.item_digest, item.class, env);
     let sig; try { sig = Buffer.from(String(env.signature), 'base64url'); } catch { sig = Buffer.alloc(0); }
     if (sig.length !== 64 || !edVerify(null, signed, k.key, sig)) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'bad_signature' };
     if (env.scope_digest !== ctx.scope_digest) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'principal_mismatch' };
-    const issued = Date.parse(env.issued_at);
-    if (Number.isNaN(issued) || ctx.now - issued > ctx.policy.max_signature_age_s * 1000 || issued - ctx.now > 60000) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'stale_signature' };
+    const issued = isoTime(env.issued_at);
+    if (!Number.isFinite(issued)) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'bad_issued_at' };
+    if (ctx.now - issued > ctx.policy.max_signature_age_s * 1000 || issued - ctx.now > 60000) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'stale_signature' };
     if (typeof env.nonce !== 'string' || !env.nonce) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'missing_nonce' };
     if (nonceSeen(env.nonce)) return { result: 'denied', key_id: env.kid, fresh: revFresh, reason: 'replayed_nonce' };
     ctx.nonces.add(ctx.scope_digest, env.nonce);
-    return revFresh ? { result: 'verified', key_id: env.kid, fresh: true, reason: null } : { result: 'unconfirmed', key_id: env.kid, fresh: false, reason: 'stale_revocation_data' };
+    return revFresh ? { result: 'verified', key_id: env.kid, fresh: true, reason: null } : { result: 'unconfirmed', key_id: env.kid, fresh: false, reason: notFresh };
   }
   if (env.type === 'stripe-webhook') {
     // Stripe-Signature: t=<unix>,v1=<hex hmac-sha256 of "t.body">. The secret is the host's, held in its registry.
@@ -152,7 +172,7 @@ export function verifyProvenance(item, registry, ctx) {
     const nonce = `stripe:${parts.t}:${parts.v1}`;
     if (nonceSeen(nonce)) return { result: 'denied', key_id: env.endpoint, fresh: revFresh, reason: 'replayed_nonce' };
     ctx.nonces.add(ctx.scope_digest, nonce);
-    return revFresh ? { result: 'verified', key_id: env.endpoint, fresh: true, reason: null } : { result: 'unconfirmed', key_id: env.endpoint, fresh: false, reason: 'stale_revocation_data' };
+    return revFresh ? { result: 'verified', key_id: env.endpoint, fresh: true, reason: null } : { result: 'unconfirmed', key_id: env.endpoint, fresh: false, reason: notFresh };
   }
   return { result: 'unconfirmed', key_id: null, fresh: revFresh, reason: 'unknown_envelope_type' };
 }
