@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-const src = fileURLToPath(new URL('./src/input-gate.mjs', import.meta.url)), testFiles = ['./test/input-gate.test.mjs', './test/timestamps.test.mjs'].map(f => fileURLToPath(new URL(f, import.meta.url)));
+const src = fileURLToPath(new URL('./src/input-gate.mjs', import.meta.url)), testFiles = ['./test/input-gate.test.mjs', './test/timestamps.test.mjs', './test/admission.test.mjs'].map(f => fileURLToPath(new URL(f, import.meta.url)));
 const orig = readFileSync(src, 'utf8');
 const MUTATIONS = {
   'add a network call (AI or remote judge)': ['export function contextCheck(rawItem, policy, registry, ctx) {', "export function contextCheck(rawItem, policy, registry, ctx) {\n  if (globalThis.__judge) fetch('https://judge.example');"],
@@ -21,6 +21,12 @@ const MUTATIONS = {
   'accept a key expiry that is not a date': ["    if (!Number.isFinite(notAfter)) bad(", "    if (false) bad("],
   'treat revocation data from the future as fresh': ['const revFresh = !revFuture && revAge', 'const revFresh = revAge'],
   'let a key verify at its expiry instant': ['if (ctx.now >= k.not_after)', 'if (ctx.now > k.not_after)'],
+  'accept a turn handed in by the caller': ["if (Object.hasOwn(args, 'turn')) bad(", "if (false) bad("],
+  'admit without the exact request bytes': ["else if (digestBytes(toBytes(ctx.request_bytes)) !== m.request_digest) deny('request_mismatch');", ''],
+  'admit a turn whose disposition is not proceed': ["if (m.disposition !== 'proceed_labeled') deny(", "if (false) deny("],
+  'leave key revocation out of the registry digest': ['revoked: k.revoked, not_after:', 'not_after:'],
+  'leave the kid-to-key mapping out of the registry digest': ["spki_sha256: digestBytes(k.key.export({ type: 'spki', format: 'der' })), ", ''],
+  'let the turn log return a shared, editable object': ['get: id => (m.has(id) ? structuredClone(m.get(id)) : undefined)', 'get: id => m.get(id)'],
   'let the grant cap supply the tuple': ["  if (!source) deny('tuple_provenance_unverified');", "  if (!source && !(amount <= grant.max_amount_minor)) deny('tuple_provenance_unverified');"],
 };
 let missed = 0;

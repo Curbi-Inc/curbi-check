@@ -115,7 +115,16 @@ export function compileRegistry(input) {
     if (typeof h.id !== 'string' || typeof h.secret !== 'string' || h.secret.length < 16) bad('bad_registry', 'hmac entries need id and a secret of 16+ characters');
     hmac.set(h.id, { secret: h.secret, revoked: h.revoked === true, classes: h.classes ?? ['tool'] });
   }
-  const pub = { version: r.version, revocation_checked_at: r.revocation_checked_at, ed25519: [...ed25519.keys()].sort(), hmac: [...hmac.keys()].sort(), ed25519_pem: (r.ed25519 ?? []).map(k => k.public_key_pem).sort() };
+  // The digest commits to the whole key policy, not just the key ids: each kid's exact public key, revocation, expiry and
+  // classes, and each HMAC id's revocation, classes and a binding of its secret (a hash, never the secret itself).
+  // Flipping any of them changes registry_digest, so a manifest made under one key policy can't be admitted under
+  // another (CTO re-review 6747192975).
+  const sortedClasses = c => [...c].sort();
+  const pub = { version: r.version, revocation_checked_at: r.revocation_checked_at,
+    ed25519: [...ed25519.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([kid, k]) => ({ kid,
+      spki_sha256: digestBytes(k.key.export({ type: 'spki', format: 'der' })), revoked: k.revoked, not_after: new Date(k.not_after).toISOString(), classes: sortedClasses(k.classes) })),
+    hmac: [...hmac.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, h]) => ({ id,
+      secret_binding: digestBytes(Buffer.from('curbi-input-gate/hmac-secret\u0000' + h.secret, 'utf8')), revoked: h.revoked, classes: sortedClasses(h.classes) })) };
   return Object.freeze({ version: r.version, revocationCheckedAt: isoTime(r.revocation_checked_at), ed25519, hmac, digest: digest(pub) });
 }
 
@@ -269,24 +278,45 @@ export function gateTurn({ items, policy, registry, ctx }) {
   walkNoJudge(c, 'ctx');
   if (typeof c.turn_id !== 'string' || !c.turn_id || typeof c.scope_digest !== 'string' || !Number.isFinite(c.now)) bad('bad_turn', 'ctx needs turn_id, scope_digest and now');
   const nonces = ctx.nonces ?? bad('bad_turn', 'ctx.nonces store is required for replay protection');
+  // The turn log is the host's record of this turn. Admission reads the turn from it and from nowhere else.
+  const turnLog = ctx.turnLog ?? bad('bad_turn', 'ctx.turnLog is required: admission reads the turn only from the host-held log');
+  if (ctx.request_bytes == null) bad('bad_turn', 'ctx.request_bytes is required: the manifest commits to the exact request sent to the model');
   const checks = items.map(it => contextCheck(it, policy, registry, { ...c, nonces, policy }));
   const manifest = { object: 'curbi.turn-manifest.v1', v: VERSION, turn_id: c.turn_id, scope_digest: c.scope_digest, policy_version: policy.version, policy_hash: policy.hash,
     registry_version: registry.version, registry_digest: registry.digest, context_check_digests: checks.map(x => x.digest),
-    request_digest: ctx.request_bytes == null ? null : digestBytes(toBytes(ctx.request_bytes)), verifier_version: VERIFIER_VERSION,
+    request_digest: digestBytes(toBytes(ctx.request_bytes)), verifier_version: VERIFIER_VERSION,
     issued_at: new Date(c.now).toISOString(), expires_at: new Date(c.now + TTL_MS).toISOString() };
   const denied = checks.some(x => x.verdict === 'denied'), modes = checks.filter(x => x.verdict !== 'verified').map(x => policy.classes[x.class]);
   const disposition = denied || modes.includes('block') ? 'block' : modes.includes('hand-off') ? 'hand_off' : 'proceed_labeled';
-  return { checks, manifest, manifest_digest: digest(manifest), disposition };
+  manifest.disposition = disposition;   // committed in the manifest digest, enforced at admission
+  const turn = { checks, manifest, manifest_digest: digest(manifest), disposition };
+  turnLog.put(c.turn_id, turn);
+  return turn;
+}
+
+// In-memory turn log for tests and single-process hosts: put once per turn id, and every read returns a fresh copy, so
+// nothing a caller does to a returned object reaches the log. A real host supplies a durable store with this shape,
+// or verifies its own signature over the manifest before handing the turn back.
+export function memoryTurnLog() {
+  const m = new Map();
+  return { put: (id, turn) => { if (m.has(id)) bad('turn_reused', `turn ${id} was already gated`); m.set(id, structuredClone(turn)); },
+    get: id => (m.has(id) ? structuredClone(m.get(id)) : undefined) };
 }
 
 // In-memory turn ledger for tests. A host supplies the durable ledger it already uses for idempotency.
 export function memoryTurns() { const m = new Map(); return { get: t => m.get(t), set: (t, op) => { m.set(t, op); } }; }
 
 // ---------- lane 3: scope authorization and tuple provenance ----------
-export function admitProposal({ proposal: rawProposal, turn: rawTurn, grant: rawGrant, policy, registry, ctx }) {
-  const proposal = plain(rawProposal, 'proposal'), turn = plain(rawTurn, 'turn'), grant = plain(rawGrant, 'grant');
+export function admitProposal(args) {
+  const { proposal: rawProposal, grant: rawGrant, policy, registry, ctx } = args;
+  // A turn handed in by the caller is never authority, however consistent its digests are (CTO re-review 6747192975).
+  if (Object.hasOwn(args, 'turn')) bad('caller_supplied_turn', 'admission reads the turn from ctx.turnLog by proposal.turn_id; a supplied turn is refused');
+  const proposal = plain(rawProposal, 'proposal'), grant = plain(rawGrant, 'grant');
   walkNoJudge({ proposal, grant }, 'admit');
   const reasons = [], deny = r => reasons.push(r);
+  const turnLog = ctx?.turnLog ?? bad('bad_admission', 'ctx.turnLog is required');
+  const turn = typeof proposal.turn_id === 'string' ? turnLog.get(proposal.turn_id) : undefined;
+  if (!turn) return { object: 'curbi.input-admission.v1', v: VERSION, verdict: 'deny', reasons: ['turn_unknown'], source: null, proposal_digest: digest(proposal), manifest_digest: null };
   // Never trust a verdict computed elsewhere: every digest this decision relies on is recomputed here.
   const checksOk = Array.isArray(turn?.checks) && turn.checks.every(x => { const { digest: d, ...rec } = x; return d === digest(rec); });
   if (!checksOk) deny('context_check_digest_mismatch');
@@ -298,6 +328,11 @@ export function admitProposal({ proposal: rawProposal, turn: rawTurn, grant: raw
   if (m.turn_id !== proposal.turn_id) deny('turn_mismatch');
   if (m.scope_digest !== grant.scope_digest) deny('scope_mismatch');
   if (m.policy_hash !== policy.hash || m.registry_digest !== registry.digest) deny('policy_or_registry_mismatch');
+  // The exact request: the bytes the host sent to the model must be the bytes the manifest committed to.
+  if (ctx.request_bytes == null) deny('request_unbound');
+  else if (digestBytes(toBytes(ctx.request_bytes)) !== m.request_digest) deny('request_mismatch');
+  // The disposition committed in the manifest is enforced here: only proceed_labeled can dispatch.
+  if (m.disposition !== 'proceed_labeled') deny(`turn_disposition_${m.disposition ?? 'missing'}`);
   const amount = proposal.amount_minor, currency = String(proposal.currency ?? '').toLowerCase();
   if (!Number.isInteger(amount) || amount <= 0) deny('bad_amount');
   // Scope authorization: the grant bounds what may happen. It never supplies the tuple on its cap alone.

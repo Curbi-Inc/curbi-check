@@ -3,14 +3,14 @@
 The "check at input" half of the product: every item that enters a model's context gets a deterministic context check, and a proposed action is admitted only when the turn's checks support it. It implements the design on curbi-platform#43 ([6683031134](https://github.com/Curbi-Inc/curbi-platform/issues/43#issuecomment-6683031134), with the boundary revision [6686406580](https://github.com/Curbi-Inc/curbi-platform/issues/43#issuecomment-6686406580)). It is a pure library and stays unsigned; the host signs the manifest and appends records to the gate log.
 
 ```js
-import { compileInputPolicy, compileRegistry, gateTurn, admitProposal, memoryNonces, memoryTurns } from './src/input-gate.mjs';
+import { compileInputPolicy, compileRegistry, gateTurn, admitProposal, memoryNonces, memoryTurns, memoryTurnLog } from './src/input-gate.mjs';
 const policy = compileInputPolicy({ version: 1, classes: { retrieval: 'hand-off' },
   entities: [{ type: 'charge', prefix: 'ch_', min: 8, max: 40 }],
   claims: { prices: [{ item: 'Pro', amount: 99 }], actions: { refunded: 'billing.refund' } } });
 const registry = compileRegistry({ version: 3, revocation_checked_at, ed25519: [{ kid, public_key_pem, classes: ['tool'] }], hmac: [{ id: 'we_1', secret }] });
-const turn = gateTurn({ items, policy, registry, ctx: { turn_id, scope_digest, now, nonces, state, grant, index, request_bytes } });
+const turn = gateTurn({ items, policy, registry, ctx: { turn_id, scope_digest, now, nonces, turnLog, state, grant, index, request_bytes } });
 // host: sign turn.manifest, append turn.checks and the manifest to the gate log, call the model
-const decision = admitProposal({ proposal, turn, grant, policy, registry, ctx: { now, turns } });   // admit | deny + reasons
+const decision = admitProposal({ proposal, grant, policy, registry, ctx: { now, turns, turnLog, request_bytes } });   // admit | deny + reasons
 ```
 
 ## Lanes
@@ -28,6 +28,17 @@ const decision = admitProposal({ proposal, turn, grant, policy, registry, ctx: {
 - `unconfirmed`: anything else.
 
 **Turn disposition:** each class's mode is `allow-labeled`, `hand-off` or `block`. The turn's disposition is `proceed_labeled`, `hand_off` or `block`.
+
+## Admission binding (CTO re-review 6747192975)
+- **The turn comes from the host-held turn log, never from the caller.** `gateTurn` writes the turn (checks, manifest, digest) to `ctx.turnLog`, once per turn id. `admitProposal` reads it by `proposal.turn_id`, and refuses a turn passed in by the caller (`caller_supplied_turn`). An unknown turn gives `turn_unknown`. The digests are still recomputed on what the log returns, so a tampered store is caught too.
+- **Exact request:** `gateTurn` requires the request bytes, and the manifest commits to their digest. `admitProposal` needs the same bytes: different bytes give `request_mismatch`, none give `request_unbound`.
+- **Disposition:** the turn's disposition is in the manifest. Only `proceed_labeled` can dispatch; otherwise the result is `turn_disposition_hand_off` or `turn_disposition_block`.
+- **Registry digest:** it commits to the whole key policy:
+  - per ed25519 kid: the exact public key, revoked, `not_after` and classes;
+  - per HMAC id: revoked, classes and a hash binding of the secret, never the secret itself;
+  - the revocation-check time.
+
+  Changing any of them changes the digest, so a manifest made under the old key policy isn't admitted.
 
 ## Times
 - **Every time is strict ISO 8601 UTC** (`2026-11-08T20:00:00Z`, optional milliseconds). That covers registry `revocation_checked_at`, each key's `not_after` and each envelope's `issued_at`. Loose forms and junk are refused, and `ctx.now` must be a finite number.
@@ -50,10 +61,10 @@ const decision = admitProposal({ proposal, turn, grant, policy, registry, ctx: {
   - Model output is an item like any other. Even signed, it never supplies a tuple.
   - No callback can be passed in.
 
-`node adapters/input-gate/mutations.mjs` breaks each boundary in the source, one at a time, and requires a test to fail. All 12 mutations are caught, including three timestamp mutations. Results are read from TAP output.
+`node adapters/input-gate/mutations.mjs` breaks each boundary in the source, one at a time, and requires a test to fail. All 18 mutations are caught: the original nine, three timestamp mutations and six admission-binding mutations. Results are read from TAP output.
 
 ## Host work (CTO, curbi-platform)
-- Sign `turn.manifest` in the attestation domain, and append the context checks and manifest to the gate log.
+- Provide `ctx.turnLog` as a durable host store (put once per turn id, return copies), or verify your own signature over the manifest before returning a turn from it. Sign `turn.manifest` in the attestation domain, and append the context checks and manifest to the gate log.
 - Add the `context_digest` / manifest reference to the executor's input assessment.
 - Call `admitProposal` before dispatch, deny on `deny`, and keep the durable nonce and turn stores (this library ships in-memory ones for tests).
 
