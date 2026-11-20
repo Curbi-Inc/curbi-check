@@ -10,7 +10,8 @@ All confirmed fields were read from the UCP repository, tag `v2026-08-25` (commi
 | Policy `description` (required). It is an object with at least one of `plain`, `markdown`, `html`. | `policy.json`, `common/types/description.json` |
 | Policy `applies_to`. It is an array of RFC 9535 JSONPath strings relative to the response root. When omitted, the policy is response-wide. | `policy.json`; spec overview, *Targeting* |
 | Policy `url`, optional. | `policy.json` |
-| Precedence: depth first, then precision (singular query 1, set match 0). A tie is undefined and SHOULD be flagged. | `docs/specification/overview/index.md`, *Precedence* |
+| Precedence: targets are evaluated against the response, and a target covers a node when a matched node's normalized path is a prefix of the node's. Depth comes first, then precision (singular query 1, set match 0). A tie is undefined and SHOULD be flagged. | `docs/specification/overview/index.md`, *Targeting* and *Precedence* (lines 3097–3162 at `87dd4b1`) |
+| A name selector selects only a member of an object, and matches nothing on an array. A wildcard selects all children. An index selector selects only an element of an array. | RFC 9535 §2.3.1.2, §2.3.2.2, §2.3.3.2 |
 | A disclosure is a `messages[]` warning with `presentation: "disclosure"`, `path` set to the item, and `code` set to the policy `type`. | Spec overview, *Presenting policies*; `common/types/message_warning.json` |
 | Disclosure rule 1: the content MUST agree with the policy it pairs with. Rule 2: it SHOULD resolve to a governing policy. | Spec overview, *Presenting policies* |
 | Warning `type` is `const "warning"`. `code`, `content` and `path` are present. `presentation` defaults to `"notice"`. | `message_warning.json` |

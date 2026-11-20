@@ -25,34 +25,69 @@ test('scope is exactly the two well-known types', () => {
   assert.deepEqual([...SCOPE_TYPES].sort(), [RET, WAR]);
 });
 
-test('JSONPath subset: singular, wildcard, root; filters and slices refused', () => {
+test('JSONPath subset: typed segments; quoted names are never wildcards; filters and slices refused', () => {
   assert.deepEqual(parsePath('$'), []);
-  assert.deepEqual(parsePath('$.line_items[2]'), ['line_items', 2]);
-  assert.deepEqual(parsePath("$['line_items'][0]"), ['line_items', 0]);
-  assert.deepEqual(parsePath('$.line_items[*]'), ['line_items', '*']);
-  for (const p of ["$.products[?@.category=='x']", '$.line_items[0:2]', '$..line_items', 'line_items[0]', '$.line_items[-1]', '$.a[01]']) assert.equal(parsePath(p), null, p);
+  assert.deepEqual(parsePath('$.line_items[2]'), [{ k: 'name', v: 'line_items' }, { k: 'index', v: 2 }]);
+  assert.deepEqual(parsePath("$['line_items'][0]"), [{ k: 'name', v: 'line_items' }, { k: 'index', v: 0 }]);
+  assert.deepEqual(parsePath('$["line_items"]'), [{ k: 'name', v: 'line_items' }]);
+  assert.deepEqual(parsePath('$.line_items[*]'), [{ k: 'name', v: 'line_items' }, { k: 'wild' }]);
+  assert.deepEqual(parsePath('$.line_items.*'), [{ k: 'name', v: 'line_items' }, { k: 'wild' }]);
+  assert.deepEqual(parsePath("$['*']"), [{ k: 'name', v: '*' }], 'quoted star is a name');
+  assert.deepEqual(parsePath("$['it\\'s']"), [{ k: 'name', v: "it's" }]);
+  assert.deepEqual(parsePath("$['a\\u0041']"), [{ k: 'name', v: 'aA' }]);
+  for (const p of ["$.products[?@.category=='x']", '$.line_items[0:2]', '$..line_items', 'line_items[0]', '$.line_items[-1]', '$.a[01]', "$['a\\q']", "$['unterminated]", "$['a'x[0]"]) assert.equal(parsePath(p), null, p);
 });
 
+const items3 = { line_items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] };
+const gov = (policies, type, path, extra = {}) => governingPolicy({ ...items3, ...extra, policies }, type, path);
+
 test('precedence: singular item override governs its node; response-wide governs the rest (SPEC)', () => {
-  assert.equal(governingPolicy(SPEC_RETURN, RET, ['line_items', 2]).index, 1);
-  assert.equal(governingPolicy(SPEC_RETURN, RET, ['line_items', 0]).index, 0);
-  assert.equal(governingPolicy(SPEC_WARRANTY, WAR, ['line_items', 2]).index, 1);
-  assert.equal(governingPolicy(SPEC_WARRANTY, WAR, ['line_items', 1]).index, 0);
-  assert.equal(governingPolicy(SPEC_RETURN, WAR, ['line_items', 0]).status, 'none');
+  assert.equal(gov(SPEC_RETURN, RET, '$.line_items[2]').index, 1);
+  assert.equal(gov(SPEC_RETURN, RET, '$.line_items[0]').index, 0);
+  assert.equal(gov(SPEC_WARRANTY, WAR, '$.line_items[2]').index, 1);
+  assert.equal(gov(SPEC_WARRANTY, WAR, '$.line_items[1]').index, 0);
+  assert.equal(gov(SPEC_RETURN, WAR, '$.line_items[0]').status, 'none');
 });
 
 test('precedence: depth first, then singular beats set at equal depth; a true tie is ambiguous, never silently resolved', () => {
   const p = [{ type: RET, description: { plain: 'set' }, applies_to: ['$.line_items[*]'] }, { type: RET, description: { plain: 'one' }, applies_to: ['$.line_items[1]'] }];
-  assert.equal(governingPolicy(p, RET, ['line_items', 1]).index, 1);
-  assert.equal(governingPolicy(p, RET, ['line_items', 0]).index, 0);
+  assert.equal(gov(p, RET, '$.line_items[1]').index, 1);
+  assert.equal(gov(p, RET, '$.line_items[0]').index, 0);
   const tie = [{ type: RET, description: { plain: 'a' } }, { type: RET, description: { plain: 'b' } }];
-  assert.equal(governingPolicy(tie, RET, ['line_items', 0]).status, 'ambiguous');
+  assert.equal(gov(tie, RET, '$.line_items[0]').status, 'ambiguous');
+  const setTie = [{ type: RET, description: { plain: 'a' }, applies_to: ['$.line_items[*]'] }, { type: RET, description: { plain: 'b' }, applies_to: ['$.line_items.*'] }];
+  assert.equal(gov(setTie, RET, '$.line_items[0]').status, 'ambiguous', 'two set matches at equal depth');
   // A policy is scored by its best covering target: singular [1] lifts it to (2,1), tying a separate singular policy.
   const multi = [{ type: RET, description: { plain: 'a' }, applies_to: ['$.line_items[*]', '$.line_items[1]'] }, { type: RET, description: { plain: 'b' }, applies_to: ['$.line_items[1]'] }];
-  assert.equal(governingPolicy(multi, RET, ['line_items', 1]).status, 'ambiguous');
-  assert.equal(governingPolicy(multi, RET, ['line_items', 0]).index, 0);
+  assert.equal(gov(multi, RET, '$.line_items[1]').status, 'ambiguous');
+  assert.equal(gov(multi, RET, '$.line_items[0]').index, 0);
   const bad = [{ type: RET, description: { plain: 'a' }, applies_to: ["$.line_items[?@.x]"] }];
-  assert.equal(governingPolicy(bad, RET, ['line_items', 0]).status, 'unsupported');
+  assert.equal(gov(bad, RET, '$.line_items[0]').status, 'unsupported');
+});
+
+test('targets are evaluated against the response: a name never matches an array element, a nonmatch covers nothing', () => {
+  // CTO P1 #2 reproduction: quoted '*' on the line_items array matches no node, so the root policy governs line 0.
+  const p = [{ type: RET, description: { plain: 'This item is final sale and cannot be returned.' } }, { type: RET, description: { plain: 'Free 30-day returns.' }, applies_to: ["$.line_items['*']"] }];
+  assert.equal(gov(p, RET, '$.line_items[0]').index, 0);
+  const r = checkDisclosures({ line_items: [{ id: 'a' }], policies: p, messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'Free 30-day returns.' }] });
+  assert.equal(r.pass, false);
+  assert.equal(r.disclosures[0].governing.index, 0);
+  assert.deepEqual(r.findings.map(f => f.rule), ['ucp:disclosure-final-sale-mismatch']);
+  // A literal '*' member on an object does match.
+  const obj = { line_items: [{ id: 'a' }], extra: { '*': { x: 1 } }, policies: [{ type: RET, description: { plain: 'r' } }, { type: RET, description: { plain: 's' }, applies_to: ["$.extra['*']"] }] };
+  assert.equal(governingPolicy(obj, RET, "$.extra['*'].x").index, 1);
+  assert.equal(governingPolicy(obj, RET, '$.line_items[0]').index, 0);
+  // An index on an object, a name on an array and an out-of-range index all match nothing.
+  for (const t of ['$.line_items.id', "$['line_items']['0']", '$.line_items[9]']) {
+    assert.equal(gov([{ type: RET, description: { plain: 'r' } }, { type: RET, description: { plain: 's' }, applies_to: [t] }], RET, '$.line_items[0]').index, 0, t);
+  }
+  // The same holds for the node itself: a name on an array or an index on an object names no node.
+  assert.equal(gov(SPEC_RETURN, RET, "$['line_items']['0']").status, 'unmatched');
+  assert.equal(governingPolicy({ extra: { 0: { x: 1 } }, policies: SPEC_RETURN }, RET, '$.extra[0]').status, 'unmatched');
+  assert.equal(governingPolicy({ extra: { 0: { x: 1 } }, policies: SPEC_RETURN }, RET, "$.extra['0']").index, 0);
+  // A disclosure path that names no node in the response is reported, not paired.
+  const miss = checkDisclosures({ ...items3, policies: SPEC_RETURN, messages: [{ type: 'warning', code: RET, path: '$.line_items[7]', presentation: 'disclosure', content: 'x' }] });
+  assert.deepEqual(miss.findings.map(f => f.rule), ['ucp:path-unmatched']);
 });
 
 test('SPEC example disclosure pairs with the final-sale policy verbatim', () => {
@@ -85,6 +120,17 @@ test('equivalent units compare; incomparable units are not a finding', () => {
   const r = checkDisclosures(checkout(y, [{ type: 'warning', code: WAR, path: '$.line_items[0]', presentation: 'disclosure', content: '12-month warranty.' }]));
   assert.equal(r.pass, true);
   assert.deepEqual(durations('2 weeks, 14-day, a year, twelve months'), [{ n: 14, base: 'day' }, { n: 14, base: 'day' }, { n: 12, base: 'month' }, { n: 12, base: 'month' }]);
+});
+
+test('time windows are attributed to the term they describe (CTO attribution case)', () => {
+  const p = [{ type: RET, description: { plain: 'Returns within 30 days. Refunds are processed within 60 days.' } }];
+  const r = checkDisclosures({ ...items3, policies: p, messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'Returns within 60 days.' }] });
+  assert.deepEqual(r.findings.map(f => f.rule), ['ucp:disclosure-duration-mismatch']);
+  const ok = checkDisclosures({ ...items3, policies: p, messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'Returns within 30 days; refunds take up to 60 days.' }] });
+  assert.equal(ok.pass, true);
+  assert.equal(checkReplyTerms({ response: { policies: p }, reply: 'Your refund will be processed within 60 days.' }).pass, true, 'refund timing is not a return window');
+  assert.equal(checkReplyTerms({ response: { policies: p }, reply: 'Sorry for the 3 day wait, returns are free within 30 days.' }).pass, true, 'reply clauses must name the term');
+  assert.deepEqual(checkReplyTerms({ response: { policies: p }, reply: 'You can return it within 60 days.' }).findings.map(f => f.rule), ['ucp:claim-duration-mismatch']);
 });
 
 test('different wording with no checkable conflict is no_conflict_found, never "agrees"', () => {
@@ -130,6 +176,8 @@ test('untrusted input is bounded and malformed input is refused', () => {
   assert.throws(() => checkDisclosures({ policies: [{ type: RET }] }), /description/);
   assert.throws(() => checkDisclosures({ policies: [], messages: [{ type: 'warning', code: RET, presentation: 'disclosure', content: 'x'.repeat(4001) }] }), /4000/);
   assert.equal(parsePath('$' + '.a'.repeat(40)), null, 'depth cap');
+  const deep = { a: Array.from({ length: 200 }, () => ({ b: Array.from({ length: 200 }, () => ({})) })) };
+  assert.equal(governingPolicy({ ...deep, policies: [{ type: RET, description: { plain: 'r' }, applies_to: ['$.a[*].b[*]'] }] }, RET, '$.a[0].b[0]').status, 'unsupported', 'node visit cap');
 });
 
 // ORDER — a business-written snapshot. Shape per source/schemas/shopping/order.json + types/adjustment.json.
@@ -167,5 +215,10 @@ test('agent reply about terms is checked against the response\'s governing retur
   // A reply that itself says final sale is not an offer of returns.
   assert.equal(checkReplyTerms({ response: fs, reply: 'Sorry, this one is final sale, so you cannot return it.' }).pass, true);
   assert.equal(checkReplyTerms({ response: fs, reply: "Unfortunately you can't return it." }).pass, true, 'negated offer, no final-sale words');
-  assert.equal(checkReplyTerms({ response: fs, reply: 'It is final sale, return it only if it arrives damaged.' }).pass, true, 'sentence-level final sale');
+  // CTO P1 #1 reproduction: a final-sale clause must not hide a warranty mismatch in the same sentence.
+  const fw = { policies: [{ type: RET, description: { plain: 'This item is final sale and cannot be returned.' } }, { type: WAR, description: { plain: '1-year limited warranty on all items.' } }] };
+  assert.deepEqual(checkReplyTerms({ response: fw, reply: 'This item is final sale, but it comes with a 2-year warranty.' }).findings.map(f => f.rule), ['ucp:claim-duration-mismatch']);
+  assert.equal(checkReplyTerms({ response: fw, reply: 'This item is final sale, but it comes with a 1-year warranty.' }).pass, true);
+  // Nor an affirmative return offer in another clause.
+  assert.deepEqual(checkReplyTerms({ response: fw, reply: 'It is marked final sale, but you can return it within 30 days.' }).findings.map(f => f.rule), ['ucp:claim-final-sale-mismatch']);
 });

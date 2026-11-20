@@ -19,7 +19,7 @@ const { runCheck } = createRequire(import.meta.url)('../../../checker/check-api.
 export const UCP_SPEC = '2026-08-25';
 export const SCOPE_TYPES = new Set(['dev.ucp.shopping.policy.return', 'dev.ucp.shopping.policy.warranty']);
 const RET = 'dev.ucp.shopping.policy.return';
-export const LIMITS = { policies: 200, messages: 200, text: 4000, appliesTo: 32, pathChars: 512, depth: 32, adjustments: 100 };
+export const LIMITS = { policies: 200, messages: 200, text: 4000, appliesTo: 32, pathChars: 512, depth: 32, adjustments: 100, visits: 10000 };
 const NOTES = {
   policy: "UCP policies[] and messages[] are the business's own statements, not Curbi policy; this checks them against each other.",
   noConflict: 'no_conflict_found means the deterministic checks (time windows, final sale) found no conflict; it is not proof of agreement.',
@@ -30,39 +30,87 @@ const NOTES = {
 const fail = m => { throw new TypeError(m); };
 const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 
-// RFC 9535 subset: root, .name, ['name'], [index], [*] / .*. Filters, slices, negative indexes and descendant
-// segments are refused (null) so a target we cannot evaluate is reported, never guessed.
+// RFC 9535 subset, as typed segments: root `$`, member names (`.name`, `['name']`, `["name"]`), array indexes
+// (`[0]`), and wildcards (`.*`, `[*]`). A quoted name is always a name, even `'*'`. Filters, slices, negative indexes
+// and descendant segments are refused (null), so a target we cannot evaluate is reported, never guessed.
+const ESC = { "'": "'", '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+function quoted(p, i) {
+  const q = p[i]; let out = ''; i++;
+  while (i < p.length) {
+    const ch = p[i];
+    if (ch === q) return { v: out, i: i + 1 };
+    if (ch === '\\') {
+      const e = p[i + 1];
+      if (e === 'u' && /^[0-9a-fA-F]{4}$/.test(p.slice(i + 2, i + 6))) { out += String.fromCharCode(parseInt(p.slice(i + 2, i + 6), 16)); i += 6; continue; }
+      if (!(e in ESC) || (e === "'" && q !== "'") || (e === '"' && q !== '"')) return null;
+      out += ESC[e]; i += 2; continue;
+    }
+    if (ch < ' ') return null;
+    out += ch; i++;
+  }
+  return null;
+}
 export function parsePath(p) {
   if (typeof p !== 'string' || p.length > LIMITS.pathChars || p[0] !== '$') return null;
-  const segs = [], rx = /\.([A-Za-z_][A-Za-z0-9_]*)|\.\*|\['((?:[^'\\]|\\.)*)'\]|\[(0|[1-9]\d{0,8})\]|\[\*\]/y;
-  let i = 1;
+  const segs = []; let i = 1;
   while (i < p.length) {
-    rx.lastIndex = i; const m = rx.exec(p);
-    if (!m || m.index !== i) return null;
-    segs.push(m[1] ?? (m[2] !== undefined ? m[2].replace(/\\(.)/g, '$1') : m[3] !== undefined ? Number(m[3]) : '*'));
+    let m;
+    if (p.startsWith('.*', i)) { segs.push({ k: 'wild' }); i += 2; }
+    else if (p[i] === '.' && (m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(p.slice(i + 1)))) { segs.push({ k: 'name', v: m[0] }); i += 1 + m[0].length; }
+    else if (p.startsWith('[*]', i)) { segs.push({ k: 'wild' }); i += 3; }
+    else if (p[i] === '[' && (m = /^\[(0|[1-9]\d{0,8})\]/.exec(p.slice(i)))) { segs.push({ k: 'index', v: Number(m[1]) }); i += m[0].length; }
+    else if (p[i] === '[' && (p[i + 1] === "'" || p[i + 1] === '"')) { const r = quoted(p, i + 1); if (!r || p[r.i] !== ']') return null; segs.push({ k: 'name', v: r.v }); i = r.i + 1; }
+    else return null;
     if (segs.length > LIMITS.depth) return null;
-    i = rx.lastIndex;
   }
   return segs;
 }
-const covers = (t, node) => t.length <= node.length && t.every((s, i) => s === '*' || s === node[i]);
+const singular = segs => segs.every(s => s.k !== 'wild');
+// Evaluate typed segments against the response (RFC 9535 2.3.1-2.3.3): a name selects a member of an object only; an
+// index selects an element of an array only; a wildcard selects every child. Returns matched normalized paths, or null
+// when evaluation would visit more than LIMITS.visits nodes.
+function evaluate(root, segs) {
+  let nodes = [{ path: [], v: root }], visits = 0;
+  for (const s of segs) {
+    const next = [];
+    for (const n of nodes) {
+      const v = n.v;
+      if (s.k === 'name') { if (isObj(v) && Object.prototype.hasOwnProperty.call(v, s.v)) next.push({ path: [...n.path, { k: 'name', v: s.v }], v: v[s.v] }); }
+      else if (s.k === 'index') { if (Array.isArray(v) && s.v < v.length) next.push({ path: [...n.path, { k: 'index', v: s.v }], v: v[s.v] }); }
+      else if (Array.isArray(v)) v.forEach((x, j) => next.push({ path: [...n.path, { k: 'index', v: j }], v: x }));
+      else if (isObj(v)) for (const key of Object.keys(v)) next.push({ path: [...n.path, { k: 'name', v: key }], v: v[key] });
+      visits += next.length;
+      if (visits > LIMITS.visits) return null;
+    }
+    nodes = next;
+  }
+  return nodes.map(n => n.path);
+}
+const prefixOf = (a, b) => a.length <= b.length && a.every((s, i) => s.k === b[i].k && s.v === b[i].v);
 
-// Precedence, spec "Precedence" steps 1-4: among same-type policies covering the node, score each by its deepest
-// covering match as (depth, precision); precision 1 for a singular query, 0 for a set match. Highest wins; a shared
-// highest score is undefined in the spec, so it is reported as ambiguous.
-export function governingPolicy(policies, type, node) {
+// Precedence, spec "Precedence" steps 1-4: evaluate each same-type policy's targets against the response; a target
+// covers the node when one of its matched normalized paths is a prefix of the node's. Score each policy by its deepest
+// covering match as (depth, precision): precision 1 for a singular query, 0 for a set match. Highest wins; a shared
+// highest score is undefined in the spec and is reported as ambiguous.
+export function governingPolicy(response, type, nodePathString) {
+  const { policies } = validateResponse(response);
+  const segs = parsePath(nodePathString);
+  if (!segs || !singular(segs)) return { status: 'unsupported', target: String(nodePathString).slice(0, 120) };
+  const node = evaluate(response, segs);
+  if (!node || node.length !== 1) return { status: 'unmatched' };
   let best = null, tied = false;
   for (let i = 0; i < policies.length; i++) {
     const p = policies[i];
     if (p.type !== type) continue;
-    const targets = p.applies_to === undefined ? ['$'] : p.applies_to;
     let score = null;
-    for (const t of targets) {
-      const segs = parsePath(t);
-      if (!segs) return { status: 'unsupported', index: i, target: String(t).slice(0, 120) };
-      if (!covers(segs, node)) continue;
-      const s = [segs.length, segs.includes('*') ? 0 : 1];
-      if (!score || s[0] > score[0] || (s[0] === score[0] && s[1] > score[1])) score = s;
+    for (const t of p.applies_to === undefined ? ['$'] : p.applies_to) {
+      const ts = parsePath(t), matched = ts && evaluate(response, ts);
+      if (!ts || !matched) return { status: 'unsupported', index: i, target: String(t).slice(0, 120) };
+      for (const m of matched) {
+        if (!prefixOf(m, node[0])) continue;
+        const sc = [m.length, singular(ts) ? 1 : 0];
+        if (!score || sc[0] > score[0] || (sc[0] === score[0] && sc[1] > score[1])) score = sc;
+      }
     }
     if (!score) continue;
     if (!best || score[0] > best.score[0] || (score[0] === best.score[0] && score[1] > best.score[1])) { best = { index: i, score }; tied = false; }
@@ -86,8 +134,16 @@ export function durations(s) {
   }
   return out;
 }
-const durationConflict = (claim, policyTexts) => {
-  const c = durations(claim), p = policyTexts.flatMap(durations);
+// Windows are attributed to the term a clause talks about, so "Refunds are processed within 60 days" is not a return
+// window. A clause counts for a term when it names that term, or (lenient, for policy and disclosure text whose type is
+// already known) when it names no term at all. Agent replies are strict: the clause must name the term.
+const TERM = { return: /\b(?:return|returns|returned|returnable|send\s+(?:it|this|them)\s+back)\b/i, warranty: /\b(?:warrant\w*|guarantee\w*)\b/i };
+const ANY_TERM = /\b(?:return\w*|refund\w*|warrant\w*|guarantee\w*|ship\w*|deliver\w*|exchange\w*|cancel\w*|trial|subscription)\b/i;
+const clauses = t => t.split(/[.!?;\n]|,|\b(?:and|but)\b/i).map(x => x.trim()).filter(Boolean);
+export function termDurations(t, term, strict) {
+  return clauses(t).filter(c => TERM[term].test(c) || (!strict && !ANY_TERM.test(c))).flatMap(durations);
+}
+const durationConflict = (c, p) => {
   for (const base of ['day', 'month']) {
     const cv = c.filter(d => d.base === base).map(d => d.n), pv = new Set(p.filter(d => d.base === base).map(d => d.n));
     const bad = cv.find(n => pv.size && !pv.has(n));
@@ -134,9 +190,9 @@ export function checkDisclosures(response) {
     disclosures.push(row);
     if (!SCOPE_TYPES.has(m.code)) { row.status = 'out_of_scope'; return; }
     const content = typeof m.content === 'string' ? m.content : '';
-    const node = typeof m.path === 'string' ? parsePath(m.path) : null;
-    if (!node || node.includes('*')) { row.status = 'unsupported'; find('ucp:path-unsupported', mi, undefined, m.path ?? '(missing path)', 'A disclosure path must be a singular JSONPath this adapter can evaluate.'); return; }
-    const g = governingPolicy(policies, m.code, node);
+    const g = governingPolicy(response, m.code, typeof m.path === 'string' ? m.path : null);
+    if (g.status === 'unsupported' && g.index === undefined) { row.status = 'unsupported'; find('ucp:path-unsupported', mi, undefined, m.path ?? '(missing path)', 'A disclosure path must be a singular JSONPath this adapter can evaluate.'); return; }
+    if (g.status === 'unmatched') { row.status = 'unmatched'; find('ucp:path-unmatched', mi, undefined, m.path, 'The disclosure path names no node in this response.'); return; }
     if (g.status === 'unsupported') { row.status = 'unsupported'; find('ucp:path-unsupported', mi, g.index, g.target, 'A same-type policy uses an applies_to target this adapter cannot evaluate, so the governing policy is unknown.'); return; }
     if (g.status === 'none') { row.status = 'unpaired'; find('ucp:disclosure-unpaired', mi, undefined, content, `No ${m.code} policy covers ${m.path}; nothing structured stands behind this disclosure.`); return; }
     if (g.status === 'ambiguous') { row.status = 'ambiguous'; find('ucp:policy-ambiguous', mi, g.index, m.path, 'Two same-type policies tie for this node; UCP leaves the outcome undefined.'); return; }
@@ -144,7 +200,7 @@ export function checkDisclosures(response) {
     row.governing = { index: g.index, type: pol.type };
     if (norm(content) === norm(ptext)) { row.status = 'verbatim'; return; }
     const before = findings.length;
-    const dc = durationConflict(content, [ptext]);
+    const term = m.code === RET ? 'return' : 'warranty', dc = durationConflict(termDurations(content, term), termDurations(ptext, term));
     if (dc) find('ucp:disclosure-duration-mismatch', mi, g.index, content, `Disclosure states ${dc.stated} ${dc.base}s; the governing policy states ${dc.policy.join(' or ')} ${dc.base}s.`);
     if (m.code === RET && finalSale(ptext) !== finalSale(content) && (returnable(content) || returnable(ptext)))
       find('ucp:disclosure-final-sale-mismatch', mi, g.index, content, finalSale(ptext) ? 'The governing policy says final sale; the disclosure offers returns.' : 'The disclosure says final sale; the governing policy offers returns.');
@@ -160,18 +216,16 @@ export function checkReplyTerms({ response, reply }) {
   if (typeof reply !== 'string' || reply.length > LIMITS.text) fail(`reply: string of at most ${LIMITS.text} chars`);
   const texts = type => policies.filter(p => p.type === type).map(p => text(p.description));
   const ret = texts(RET), war = texts('dev.ucp.shopping.policy.warranty'), findings = [];
-  // Durations are attributed per clause (so "30-day returns and a 1-year warranty" splits cleanly); final-sale wording
-  // is read per sentence, so "this is final sale, so you cannot return it" stays one statement.
-  for (const sentence of reply.split(/[.!?;\n]/).map(s => s.trim()).filter(Boolean)) for (const clause of sentence.split(/,|\b(?:and|but)\b/i).map(s => s.trim()).filter(Boolean)) {
-    if (finalSale(sentence) && !returnable(sentence)) continue;
-    const isRet = /\b(?:return|returns|returned|refund|refunds)\b/i.test(clause), isWar = /\bwarrant/i.test(clause);
-    if (isRet && ret.length) {
-      const dc = durationConflict(clause, ret);
+  // Each clause is judged on its own: a final-sale or negated clause never hides a warranty mismatch or an affirmative
+  // return offer in another clause of the same sentence.
+  for (const clause of clauses(reply)) {
+    if (ret.length) {
+      const dc = durationConflict(termDurations(clause, 'return', true), ret.flatMap(t => termDurations(t, 'return')));
       if (dc) findings.push({ rule: 'ucp:claim-duration-mismatch', text: clause.slice(0, 200), why: `Reply states a ${dc.stated}-${dc.base} return window; the return policy states ${dc.policy.join(' or ')} ${dc.base}s.` });
-      if (returnable(clause) && ret.every(finalSale)) findings.push({ rule: 'ucp:claim-final-sale-mismatch', text: clause.slice(0, 200), why: 'Reply offers a return; the return policy says final sale.' });
+      if (/\b(?:return|refund)\w*/i.test(clause) && returnable(clause) && ret.every(finalSale)) findings.push({ rule: 'ucp:claim-final-sale-mismatch', text: clause.slice(0, 200), why: 'Reply offers a return; the return policy says final sale.' });
     }
-    if (isWar && war.length) {
-      const dc = durationConflict(clause, war);
+    if (war.length) {
+      const dc = durationConflict(termDurations(clause, 'warranty', true), war.flatMap(t => termDurations(t, 'warranty')));
       if (dc) findings.push({ rule: 'ucp:claim-duration-mismatch', text: clause.slice(0, 200), why: `Reply states a ${dc.stated}-${dc.base} warranty; the warranty policy states ${dc.policy.join(' or ')} ${dc.base}s.` });
     }
   }
