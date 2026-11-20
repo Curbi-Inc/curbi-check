@@ -134,14 +134,21 @@ export function durations(s) {
   }
   return out;
 }
-// Windows are attributed to the term a clause talks about, so "Refunds are processed within 60 days" is not a return
-// window. A clause counts for a term when it names that term, or (lenient, for policy and disclosure text whose type is
-// already known) when it names no term at all. Agent replies are strict: the clause must name the term.
-const TERM = { return: /\b(?:return|returns|returned|returnable|send\s+(?:it|this|them)\s+back)\b/i, warranty: /\b(?:warrant\w*|guarantee\w*)\b/i };
-const ANY_TERM = /\b(?:return\w*|refund\w*|warrant\w*|guarantee\w*|ship\w*|deliver\w*|exchange\w*|cancel\w*|trial|subscription)\b/i;
+// Windows are attributed to the term they belong to, so "Refunds are processed within 60 days" is not a return window.
+// Bounded contract: inside one clause, each window belongs to the nearest term word before it, or, when none precedes it,
+// the nearest term word after it ("30-day returns"). A clause with no term word counts only in lenient mode (policy and
+// disclosure text, whose type is already known). Agent replies are strict: the window must belong to the named term.
+const KW = /\b(?:(return\w*|send\s+(?:it|this|them)\s+back)|(warrant\w*|guarantee\w*)|(refund\w*|ship\w*|deliver\w*|exchange\w*|cancel\w*|trial|subscription))\b/gi;
+const KIND = ['return', 'warranty', 'other'];
 const clauses = t => t.split(/[.!?;\n]|,|\b(?:and|but)\b/i).map(x => x.trim()).filter(Boolean);
 export function termDurations(t, term, strict) {
-  return clauses(t).filter(c => TERM[term].test(c) || (!strict && !ANY_TERM.test(c))).flatMap(durations);
+  return clauses(t).flatMap(c => {
+    const kws = [...c.matchAll(KW)].map(m => ({ at: m.index, kind: KIND[m.slice(1, 4).findIndex(Boolean)] }));
+    return [...c.normalize('NFKC').matchAll(DUR)].filter(m => {
+      const before = kws.filter(k => k.at < m.index).pop(), owner = before ?? kws.find(k => k.at > m.index);
+      return owner ? owner.kind === term : !strict;
+    }).flatMap(m => durations(m[0]));
+  });
 }
 const durationConflict = (c, p) => {
   for (const base of ['day', 'month']) {
@@ -153,12 +160,20 @@ const durationConflict = (c, p) => {
 };
 
 const NO_RET = /\b(?:final[\s-]+sale|non-?returnable|(?:cannot|can(?:'|’)?t|may not|will not)\s+be\s+(?:returned|sent\s+back|exchanged)|not\s+(?:eligible|accepted)\s+for\s+(?:a\s+)?returns?|no\s+returns?)\b/i;
-const RETURNABLE = /\b(?:free\s+returns?|returns?\s+(?:are\s+|is\s+)?(?:accepted|allowed|free|welcome|within)|(?:can|may)\s+(?:return|send\s+back)\b|return\s+(?:it|this|them|the\s+item)\b|\d+[\s-]*day\s+returns?|full\s+refund|send\s+(?:it|this)\s+back)/i;
-const finalSale = t => NO_RET.test(t);
-// A negation shortly before the return verb ("you cannot return it", "we won't take it back") is not an offer.
-const NEG_RETURN = /\b(?:not|cannot|can(?:'|’)?t|won(?:'|’)?t|unable|never|no)\b[^.!?\n]{0,30}\b(?:return|send|refund)/i;
-const returnable = t => RETURNABLE.test(t) && !NO_RET.test(t) && !NEG_RETURN.test(t);
-
+const RETURNABLE = /\b(?:free\s+returns?|returns?\s+(?:are\s+|is\s+)?(?:accepted|allowed|free|welcome|within)|(?:can|may)\s+(?:return|send\s+back|be\s+returned)\b|return\s+(?:it|this|them|the\s+item)\b|\d+[\s-]*day\s+returns?|full\s+refund|send\s+(?:it|this)\s+back)/i;
+// Final sale and return offers are judged per proposition. Propositions split on sentence ends, ; : and dashes, and on
+// contrast words; a plain comma or "and" does not split, so "you cannot, under any circumstances, return it" stays one
+// proposition. An offer is negated only by a negation shortly before it in the same proposition, so a final-sale phrase
+// elsewhere can never cancel an affirmative offer.
+const PROPS = /[.!?;:\n\u2013\u2014]|\s-\s|\b(?:but|however|although|though|yet|except|whereas|while|nevertheless)\b/i;
+const props = t => t.split(PROPS).map(x => x.trim()).filter(Boolean);
+// "no" negates only when it directly precedes the offer ("no returns"), so "No problem, you can return it" is an offer.
+const NEG_BEFORE = /(?:\b(?:not|cannot|can(?:'|\u2019)?t|won(?:'|\u2019)?t|unable|never)\b[^.!?;:\n]{0,40}|\bno\s+)$/i;
+const offers = p => [...p.matchAll(new RegExp(RETURNABLE.source, 'gi'))].some(m => !NEG_BEFORE.test(p.slice(0, m.index)));
+// stance(t): does the text say final sale / no returns anywhere, and does it make an affirmative return offer anywhere?
+const stance = t => { const ps = props(t); return { final: ps.some(x => NO_RET.test(x)), offer: ps.some(offers) }; };
+const finalSale = t => { const s = stance(t); return s.final && !s.offer; };
+const returnable = t => stance(t).offer;
 function validateResponse(r) {
   if (!isObj(r)) fail('response must be an object');
   const policies = r.policies ?? [], messages = r.messages ?? [];
@@ -202,8 +217,13 @@ export function checkDisclosures(response) {
     const before = findings.length;
     const term = m.code === RET ? 'return' : 'warranty', dc = durationConflict(termDurations(content, term), termDurations(ptext, term));
     if (dc) find('ucp:disclosure-duration-mismatch', mi, g.index, content, `Disclosure states ${dc.stated} ${dc.base}s; the governing policy states ${dc.policy.join(' or ')} ${dc.base}s.`);
-    if (m.code === RET && finalSale(ptext) !== finalSale(content) && (returnable(content) || returnable(ptext)))
-      find('ucp:disclosure-final-sale-mismatch', mi, g.index, content, finalSale(ptext) ? 'The governing policy says final sale; the disclosure offers returns.' : 'The disclosure says final sale; the governing policy offers returns.');
+    // A policy that is purely final sale conflicts with any return offer in the disclosure; a purely returnable policy
+    // conflicts with any final-sale statement. A policy that says both (e.g. clearance lines excepted) is not judged.
+    if (m.code === RET) {
+      const ps = stance(ptext), cs = stance(content);
+      if (ps.final && !ps.offer && cs.offer) find('ucp:disclosure-final-sale-mismatch', mi, g.index, content, 'The governing policy says final sale; the disclosure offers returns.');
+      else if (ps.offer && !ps.final && cs.final) find('ucp:disclosure-final-sale-mismatch', mi, g.index, content, 'The disclosure says final sale; the governing policy offers returns.');
+    }
     row.status = findings.length > before ? 'conflict' : 'no_conflict_found';
   });
   return { object: 'curbi.ucp.disclosure-check.v1', ucpSpec: UCP_SPEC, sourceTrust: 'business_self_reported', signed: false, pass: findings.length === 0, disclosures, findings, notes: [NOTES.policy, NOTES.noConflict, NOTES.unsigned] };
@@ -218,11 +238,13 @@ export function checkReplyTerms({ response, reply }) {
   const ret = texts(RET), war = texts('dev.ucp.shopping.policy.warranty'), findings = [];
   // Each clause is judged on its own: a final-sale or negated clause never hides a warranty mismatch or an affirmative
   // return offer in another clause of the same sentence.
+  if (ret.length && ret.every(finalSale)) for (const p of props(reply)) {
+    if (/\b(?:return|refund)\w*/i.test(p) && offers(p)) findings.push({ rule: 'ucp:claim-final-sale-mismatch', text: p.slice(0, 200), why: 'Reply offers a return; the return policy says final sale.' });
+  }
   for (const clause of clauses(reply)) {
     if (ret.length) {
       const dc = durationConflict(termDurations(clause, 'return', true), ret.flatMap(t => termDurations(t, 'return')));
       if (dc) findings.push({ rule: 'ucp:claim-duration-mismatch', text: clause.slice(0, 200), why: `Reply states a ${dc.stated}-${dc.base} return window; the return policy states ${dc.policy.join(' or ')} ${dc.base}s.` });
-      if (/\b(?:return|refund)\w*/i.test(clause) && returnable(clause) && ret.every(finalSale)) findings.push({ rule: 'ucp:claim-final-sale-mismatch', text: clause.slice(0, 200), why: 'Reply offers a return; the return policy says final sale.' });
     }
     if (war.length) {
       const dc = durationConflict(termDurations(clause, 'warranty', true), war.flatMap(t => termDurations(t, 'warranty')));

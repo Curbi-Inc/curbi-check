@@ -5,7 +5,7 @@
 // message_warning.json; source/schemas/shopping/order.json, types/adjustment.json). Everything else is synthetic.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePath, governingPolicy, checkDisclosures, durations, orderRecord, UCP_ACTIONS, checkReplyAgainstOrder, checkReplyTerms, SCOPE_TYPES } from '../src/ucp.mjs';
+import { parsePath, governingPolicy, checkDisclosures, durations, orderRecord, UCP_ACTIONS, checkReplyAgainstOrder, checkReplyTerms, termDurations, SCOPE_TYPES } from '../src/ucp.mjs';
 
 const RET = 'dev.ucp.shopping.policy.return', WAR = 'dev.ucp.shopping.policy.warranty';
 // SPEC: engraved item, final-sale override on line 2.
@@ -221,4 +221,55 @@ test('agent reply about terms is checked against the response\'s governing retur
   assert.equal(checkReplyTerms({ response: fw, reply: 'This item is final sale, but it comes with a 1-year warranty.' }).pass, true);
   // Nor an affirmative return offer in another clause.
   assert.deepEqual(checkReplyTerms({ response: fw, reply: 'It is marked final sale, but you can return it within 30 days.' }).findings.map(f => f.rule), ['ucp:claim-final-sale-mismatch']);
+});
+
+test('CTO successor re-review: final-sale wording never masks an affirmative return offer (proposition-scoped)', () => {
+  const FS = [{ type: RET, description: { plain: 'This item is final sale and cannot be returned.' } }];
+  const disc = content => checkDisclosures({ line_items: [{ id: 'a' }], policies: FS,
+    messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content }] });
+  const rules = r => r.findings.map(f => f.rule);
+  // Exact reproduction 1 (disclosure surface).
+  const r1 = disc('This item is final sale, but you can return it within 60 days.');
+  assert.equal(r1.pass, false);
+  assert.deepEqual(rules(r1), ['ucp:disclosure-final-sale-mismatch']);
+  for (const c of ['Final sale: you can return it within 60 days.', 'Final sale — you may return it within 60 days.',
+    'Final sale, you can return it within 60 days.', 'This is final sale; however, returns are accepted within 60 days.',
+    'Although this is final sale, you can return it.'])
+    assert.deepEqual(rules(disc(c)), ['ucp:disclosure-final-sale-mismatch'], c);
+  // Honest refusals still agree.
+  for (const c of ['This item is final sale.', 'Final sale: this item cannot be returned.', 'Final sale. You cannot, under any circumstances, return it.',
+    'Final sale and no returns within 60 days.', 'This item is final sale, so it cannot be returned.'])
+    assert.equal(disc(c).pass, true, c);
+  // Returnable policy vs a disclosure that only says final sale is still a conflict; a mixed policy is not judged.
+  const ok = [{ type: RET, description: { plain: 'Returns accepted within 30 days.' } }];
+  const d2 = checkDisclosures({ line_items: [{ id: 'a' }], policies: ok, messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'This item is final sale.' }] });
+  assert.deepEqual(rules(d2), ['ucp:disclosure-final-sale-mismatch']);
+  const mixed = [{ type: RET, description: { plain: 'Clearance items are final sale; other items can be returned within 30 days.' } }];
+  const d3 = checkDisclosures({ line_items: [{ id: 'a' }], policies: mixed, messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'You can return it within 30 days.' }] });
+  assert.equal(d3.pass, true);
+
+  // Exact reproduction 2 (reply surface, colon).
+  const resp = { line_items: [{ id: 'a' }], policies: FS };
+  const r2 = checkReplyTerms({ response: resp, reply: 'This item is final sale: you can return it within 60 days.' });
+  assert.equal(r2.pass, false);
+  assert.deepEqual(rules(r2), ['ucp:claim-final-sale-mismatch']);
+  for (const reply of ['Final sale — you can return it.', 'Final sale, you can return it for a full refund.', 'Although it is final sale, you may return it.', 'It is final sale; however, you can return it.'])
+    assert.deepEqual(rules(checkReplyTerms({ response: resp, reply })), ['ucp:claim-final-sale-mismatch'], reply);
+  for (const reply of ['This item is final sale: it cannot be returned.', 'Sorry, final sale, so you cannot return it.', 'You cannot, under any circumstances, return it.', 'Final sale, no returns.'])
+    assert.equal(checkReplyTerms({ response: resp, reply }).pass, true, reply);
+});
+
+test('term attribution within one clause: a window belongs to the nearest preceding term word, else the nearest following', () => {
+  // CTO retained observation: return and refund timing in one unsplit clause.
+  const disc = (plain, content) => checkDisclosures({ line_items: [{ id: 'a' }], policies: [{ type: RET, description: { plain } }],
+    messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content }] });
+  const r = disc('Returns within 30 days with refunds processed within 60 days.', 'Returns within 60 days.');
+  assert.deepEqual(r.findings.map(f => f.rule), ['ucp:disclosure-duration-mismatch']);
+  assert.equal(disc('Returns within 30 days with refunds processed within 60 days.', 'Returns within 30 days.').pass, true);
+  assert.equal(disc('Within 30 days you can return it for a refund.', 'Returns within 30 days.').pass, true, 'no preceding term: nearest following');
+  assert.deepEqual(disc('30-day returns, refunds issued in 10 days.', 'Returns within 10 days.').findings.map(f => f.rule), ['ucp:disclosure-duration-mismatch']);
+  assert.deepEqual(termDurations('Returns within 30 days with refunds processed within 60 days', 'return'), [{ n: 30, base: 'day' }]);
+  assert.deepEqual(termDurations('Refunds processed within 60 days of a return', 'return'), []);
+  assert.deepEqual(termDurations('within 45 days', 'return'), [{ n: 45, base: 'day' }], 'lenient: names no term');
+  assert.deepEqual(termDurations('within 45 days', 'return', true), [], 'strict: must name the term');
 });
