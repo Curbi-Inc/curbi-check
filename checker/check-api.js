@@ -39,6 +39,9 @@ function ckMoreActed(text, actions) {
     const rx = [
       // passive with a person or thing as subject: "You were refunded", "It got refunded"
       new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:were|was|got|have\\s+been|has\\s+been)\\s+(?:just\\s+|already\\s+|now\\s+|fully\\s+)?(${v})\\b`, 'gi'),
+      // present-tense passive: "Your subscription is now cancelled", "Your order is refunded." A bare "is <verb>" counts only
+      // when it ends the clause, so rules ("is cancelled when a payment fails") and questions do not match.
+      new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:is|are)\\s+(?:(?:now|already|officially)\\s+(?:${v})\\b|(?:${v})(?=\\s*(?:[.!;]|,\\s*(?:so|and)\\b|$)))`, 'gi'),
       // emphatic did with the base form: "I did refund you", "We really did cancel it"
       new RegExp(`\\b(?:I|we)\\s+(?:[a-z]+ly\\s+|actually\\s+|just\\s+|already\\s+)?did\\s+(${B})\\b`, 'gi'),
       // coordinated or adverbial first person: "I went ahead and refunded", "we successfully refunded"
@@ -379,12 +382,24 @@ function compilePolicy(p) {
           return '(?<![a-zA-Z0-9_])' + literal + (/[a-z]$/i.test(phrase) ? '(?:s|es|d|ed|ing)?' : '') + '(?![a-zA-Z0-9_])';
         }).join('|'), 'gi') };
     }),
-    actions: Object.fromEntries(Object.entries(actions).map(([verb, op]) => {
+    actions: ckSpellingPairs(Object.fromEntries(Object.entries(actions).map(([verb, op]) => {
       if (!/^[a-z]{2,20}$/.test(verb) || !ckStr(op, 60)) bad(`policy.actions.${verb}: lowercase verb -> operation string`);
       return [verb, op];
-    })),
+    }))),
     unknownAmounts: p.unknownAmounts === 'allow' ? 'allow' : 'flag',
   };
+}
+
+// UK and US spellings of the same verb ("cancelled" / "canceled") are one claim. Only these known pairs are expanded, so a
+// verb such as "filed" never starts matching "filled". A spelling the policy lists itself keeps its own operation.
+const CK_LL_VERBS = /^(cancel|label|total|signal|model|travel|fuel|level|dial|channel)l?ed$/;
+function ckSpellingPairs(actions) {
+  const out = { ...actions };
+  for (const [verb, op] of Object.entries(actions)) {
+    const m = CK_LL_VERBS.exec(verb);
+    if (m) for (const twin of [m[1] + 'ed', m[1] + 'led']) if (!Object.prototype.hasOwnProperty.call(out, twin)) out[twin] = op;
+  }
+  return out;
 }
 
 function compileRecord(r, verified) {

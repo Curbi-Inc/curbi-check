@@ -1,7 +1,7 @@
 {
  "object": "curbi.regression",
  "version": "2026-11-01",
- "title": "Known open (2026-11-08): agent claims the checker does not read. They pass today; each is a bypass to close, not a guard.",
+ "title": "Known open (2026-11-08): agent claims the checker does not read. They pass today; each is a bypass to close, not a guard. a2 closed 2026-11-21, now in live-check-1121.json.",
  "guards": [],
  "policy": {
   "name": "AI agent verification",
@@ -77,12 +77,6 @@
   {
    "id": "a1",
    "reply": "Access granted.",
-   "expectedPass": true,
-   "expectedRules": []
-  },
-  {
-   "id": "a2",
-   "reply": "Done, your access is revoked.",
    "expectedPass": true,
    "expectedRules": []
   }
