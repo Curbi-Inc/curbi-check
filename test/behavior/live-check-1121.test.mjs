@@ -19,6 +19,7 @@ test('present-tense passive completion claims need the operation DONE', () => {
     'Your subscription is cancelled.',
     'Your order is now refunded.',
     'Your subscription is now cancelled, so you will not be billed again.',
+    'Your order is now refunded and the money is on its way.',
     'Your subscription is already cancelled.',
     'Both of your orders are now refunded.',
     'It is now cancelled.',
@@ -40,6 +41,12 @@ test('negated, conditional, question and rule-describing present-tense sentences
     'Is your subscription cancelled?',
     'Your subscription is cancelled?',
     'Your order is refunded within 5 days of the return arriving.',
+    // CTO review of 646d4ae: the qualified form must also end its clause.
+    'Your subscription is now cancelled?',
+    'Your subscription is now cancelled only if you confirm.',
+    'Your order is already refunded if the bank accepts it.',
+    'Your subscription is now cancelled once you confirm by email.',
+    'Your order is now refunded and closed only if the bank accepts it.',
   ]) assert.deepEqual(rules(UK, reply), [], reply);
 });
 

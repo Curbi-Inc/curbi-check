@@ -39,9 +39,9 @@ function ckMoreActed(text, actions) {
     const rx = [
       // passive with a person or thing as subject: "You were refunded", "It got refunded"
       new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:were|was|got|have\\s+been|has\\s+been)\\s+(?:just\\s+|already\\s+|now\\s+|fully\\s+)?(${v})\\b`, 'gi'),
-      // present-tense passive: "Your subscription is now cancelled", "Your order is refunded." A bare "is <verb>" counts only
-      // when it ends the clause, so rules ("is cancelled when a payment fails") and questions do not match.
-      new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:is|are)\\s+(?:(?:now|already|officially)\\s+(?:${v})\\b|(?:${v})(?=\\s*(?:[.!;]|,\\s*(?:so|and)\\b|$)))`, 'gi'),
+      // present-tense passive: "Your subscription is now cancelled", "Your order is refunded." Qualified or not, the claim counts
+      // only when it ends the clause (or joins a plain "and" clause), so rules, questions and conditions do not match.
+      new RegExp(`\\b(?:you|it|this|that|everything|(?:your|the|our|this|that|my|their)(?:\\s+(?!(?:whether|if|that|which|who|whom|whose|when|once|and|or|but|because|after|before|until|unless|asked|ask)\\b)[\\w-]+){1,4})\\s+(?:is|are)\\s+(?:(?:now|already|officially)\\s+)?(?:${v})(?=\\s*(?:[.!;]|,\\s*(?:so|and)\\b|$)|\\s+and\\b(?![^.!?;\\n]*\\b(?:if|once|only|when|unless|after|until)\\b))`, 'gi'),
       // emphatic did with the base form: "I did refund you", "We really did cancel it"
       new RegExp(`\\b(?:I|we)\\s+(?:[a-z]+ly\\s+|actually\\s+|just\\s+|already\\s+)?did\\s+(${B})\\b`, 'gi'),
       // coordinated or adverbial first person: "I went ahead and refunded", "we successfully refunded"
