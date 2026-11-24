@@ -273,3 +273,14 @@ test('term attribution within one clause: a window belongs to the nearest preced
   assert.deepEqual(termDurations('within 45 days', 'return'), [{ n: 45, base: 'day' }], 'lenient: names no term');
   assert.deepEqual(termDurations('within 45 days', 'return', true), [], 'strict: must name the term');
 });
+
+test('CTO re-review of 6079423: keyword and window offsets share one normalized string', () => {
+  const lig = 'ﬃ'.repeat(12) + ' Returns within 30 days with refunds processed within 60 days.';
+  const resp = { line_items: [{ id: 'a' }], policies: [{ type: RET, description: { plain: lig } }],
+    messages: [{ type: 'warning', code: RET, path: '$.line_items[0]', presentation: 'disclosure', content: 'Returns within 60 days.' }] };
+  assert.deepEqual(checkDisclosures(resp).findings.map(f => f.rule), ['ucp:disclosure-duration-mismatch']);
+  assert.deepEqual(checkReplyTerms({ response: resp, reply: 'You can return it within 60 days.' }).findings.map(f => f.rule), ['ucp:claim-duration-mismatch']);
+  assert.deepEqual(termDurations(lig, 'return'), [{ n: 30, base: 'day' }]);
+  // Compatibility forms in the keyword itself still attribute correctly.
+  assert.deepEqual(termDurations('Ｒeturns within 30 days', 'return'), [{ n: 30, base: 'day' }]);
+});

@@ -142,9 +142,10 @@ const KW = /\b(?:(return\w*|send\s+(?:it|this|them)\s+back)|(warrant\w*|guarante
 const KIND = ['return', 'warranty', 'other'];
 const clauses = t => t.split(/[.!?;\n]|,|\b(?:and|but)\b/i).map(x => x.trim()).filter(Boolean);
 export function termDurations(t, term, strict) {
-  return clauses(t).flatMap(c => {
+  // Keywords and windows are both located in the same NFKC string, so their offsets are comparable.
+  return clauses(t.normalize('NFKC')).flatMap(c => {
     const kws = [...c.matchAll(KW)].map(m => ({ at: m.index, kind: KIND[m.slice(1, 4).findIndex(Boolean)] }));
-    return [...c.normalize('NFKC').matchAll(DUR)].filter(m => {
+    return [...c.matchAll(DUR)].filter(m => {
       const before = kws.filter(k => k.at < m.index).pop(), owner = before ?? kws.find(k => k.at > m.index);
       return owner ? owner.kind === term : !strict;
     }).flatMap(m => durations(m[0]));
